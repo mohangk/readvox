@@ -3,9 +3,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 afterEach(() => { vi.resetModules(); vi.restoreAllMocks(); vi.unstubAllGlobals(); document.body.innerHTML = ''; window.localStorage.clear(); });
 
 const profiles = [
-  { id: 1, name: 'English audiobook', language: 'en', voice: 'Kai', speed: 1, model: 'instruct', instructions: 'Calm', preview_text: 'Preview' },
-  { id: 2, name: 'Chinese audiobook', language: 'zh', voice: 'Kai', speed: 1, model: 'instruct', instructions: 'Calm', preview_text: '中文' },
-  { id: 3, name: 'Slow English', language: 'en', voice: 'Kai', speed: 0.75, model: 'instruct', instructions: 'Soft', preview_text: 'Preview' },
+  { id: 1, name: 'English audiobook', language: 'en', voice_id: 11, voice: 'Kai', speed: 1, instructions: 'Calm', preview_text: 'Preview' },
+  { id: 2, name: 'Chinese audiobook', language: 'zh', voice_id: 11, voice: 'Kai', speed: 1, instructions: 'Calm', preview_text: '中文' },
+  { id: 3, name: 'Slow English', language: 'en', voice_id: 11, voice: 'Kai', speed: 0.75, instructions: 'Soft', preview_text: 'Preview' },
 ];
 
 function selectionDom() {
@@ -33,7 +33,7 @@ describe('named profile selection', () => {
 });
 
 function editorDom() {
-  document.body.innerHTML = `<section id="profile-editor"><select id="editor-profiles"></select><input id="profile-name"><button id="profile-save-as"></button><button id="profile-delete"></button><button id="profile-save"></button><button id="profile-cancel"></button><form id="instruction-sample-form"><select id="instruction-language"></select><select id="instruction-model"></select><select id="instruction-voice"></select><select id="instruction-speed"></select><textarea id="instruction-prompt"></textarea><textarea id="instruction-text"></textarea><button id="instruction-sample"></button><button id="clear-instruction-samples"></button><p id="instruction-status"></p></form><audio id="instruction-audio"></audio></section>`;
+  document.body.innerHTML = `<section id="profile-editor"><select id="editor-profiles"></select><input id="profile-name"><button id="profile-save-as"></button><button id="profile-delete"></button><button id="profile-save"></button><button id="profile-cancel"></button><form id="instruction-sample-form"><select id="instruction-language"></select><select id="instruction-voice"></select><select id="instruction-speed"></select><textarea id="instruction-prompt"></textarea><textarea id="instruction-text"></textarea><button id="instruction-sample"></button><button id="clear-instruction-samples"></button><p id="instruction-status"></p></form><audio id="instruction-audio"></audio></section>`;
 }
 
 describe('named profile editor', () => {
@@ -41,7 +41,7 @@ describe('named profile editor', () => {
     editorDom();
     const requests = [];
     vi.stubGlobal('fetch', vi.fn(async (url, init) => {
-      if (url.endsWith('/options')) return {ok:true,json:async()=>({languages:[{value:'en',label:'English'},{value:'zh',label:'Chinese'}],models:[{value:'instruct',label:'Instruct'}],voices:[{value:'Kai',label:'Kai'}],speeds:[{value:1,label:'1x'}],default_voice:'Kai',default_model:'instruct'})};
+      if (url.endsWith('/options')) return {ok:true,json:async()=>({voice_catalog:[{id:11,name:'Kai',available:true,provider:'qwen',model:'instruct',languages:['en','zh'],supports_instructions:true}],default_voice_id:11,languages:[{value:'en',label:'English'},{value:'zh',label:'Chinese'}],models:[{value:'instruct',label:'Instruct'}],voices:[{value:'Kai',label:'Kai'}],speeds:[{value:1,label:'1x'}],default_voice:'Kai',default_model:'instruct'})};
       requests.push([url, init]);
       return {ok:true,json:async()=>({...profiles[0],...JSON.parse(init.body)}),blob:async()=>new Blob(['audio'])};
     }));
@@ -86,7 +86,7 @@ async function mountEditor(handler = async () => ({ok:true,json:async()=>profile
   const requests = [];
   vi.stubGlobal('fetch', vi.fn(async (url, init) => {
     if (url.endsWith('/options')) return {ok:true,json:async()=>({
-      languages:[{value:'en',label:'English'},{value:'zh',label:'Chinese'}],
+      voice_catalog:[{id:11,name:'Kai',available:true,provider:'qwen',model:'instruct',languages:['en','zh'],supports_instructions:true}],default_voice_id:11,languages:[{value:'en',label:'English'},{value:'zh',label:'Chinese'}],
       models:[{value:'instruct',label:'Instruct'},{value:'legacy',label:'Legacy'}],
       voices:[{value:'Kai',label:'Kai'}], voices_by_model:{instruct:[{value:'Kai',label:'Kai'}],legacy:[{value:'Jennifer',label:'Jennifer'}]},
       speeds:[{value:1,label:'1x'},{value:1.25,label:'1.25x'}], default_model:'instruct',default_voice:'Kai',
@@ -200,7 +200,7 @@ it('shows OCR profile rejection in Generate and preserves reviewed draft text', 
   state.currentOcrDraft = {id:42,language:'zh',linked_generation_id:null,combined_text:'中文'};
   document.querySelector('#ocr-review-list').innerHTML = '<textarea class="ocr-combined-text">Reviewed 中文</textarea>';
   vi.stubGlobal('fetch', vi.fn(async()=>({ok:false,status:400,json:async()=>({detail:'Select a voice profile matching the OCR draft language'})})));
-  const {initOcr,registerOcrEvents} = await import('../../src/tts_app/static/ocr.js?v=profiles-1');
+  const {initOcr,registerOcrEvents} = await import('../../src/tts_app/static/ocr.js?v=voice-language-2');
   initOcr({voiceGenerationPayload:async()=>({profile_id:1}),stopPlayback:vi.fn()});
   registerOcrEvents();
   document.querySelector('#generate-ocr-audio').click();

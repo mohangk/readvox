@@ -8,6 +8,7 @@ const key = 'readvox.profileSelection.v1';
 let profiles = [];
 let inputMode = 'text';
 let editProfile = () => {};
+let selectionChanged = () => {};
 
 function readSelection() {
   try {
@@ -23,9 +24,12 @@ function remember(profile) {
 }
 export function currentLanguage() { return languageSelect?.value || 'en'; }
 export function selectedProfile() { return profiles.find(profile => String(profile.id) === selector?.value); }
+function availableProfile(profile) { return profile && profile.voice_available !== false && profile.voice_available !== 0; }
+export function hasUsableSelectedProfile() { return Boolean(availableProfile(selectedProfile())); }
 export function voiceGenerationPayload() {
   const profile = selectedProfile();
   if (!profile) throw new Error('Create a voice profile before generating audio');
+  if (!availableProfile(profile)) throw new Error('This profile’s voice is unavailable. Choose another profile or use Edit to change its voice.');
   return {profile_id: profile.id};
 }
 export function renderVoiceControls({language} = {}) {
@@ -33,8 +37,9 @@ export function renderVoiceControls({language} = {}) {
   languageSelect.value = language || currentLanguage() || readSelection().language || 'en';
   const matching = inputMode === 'image' ? profiles.filter(profile => profile.language === currentLanguage()) : profiles;
   const selected = matching.find(profile => profile.id === readSelection()[currentLanguage()])
-    || matching.find(profile => profile.language === currentLanguage()) || matching[0];
-  selector.innerHTML = matching.map(profile => `<option value="${profile.id}">${escapeHtml(profile.name)}</option>`).join('');
+    || matching.find(profile => profile.language === currentLanguage() && availableProfile(profile))
+    || matching.find(availableProfile) || matching[0];
+  selector.innerHTML = (matching.length ? '' : '<option value="">No saved profiles</option>') + matching.map(profile => `<option value="${profile.id}">${escapeHtml(profile.name)}</option>`).join('');
   if (selected) selector.value = String(selected.id);
   rememberSelection();
 }
@@ -42,6 +47,16 @@ function rememberSelection() {
   const profile = selectedProfile();
   if (profile && inputMode !== 'image') languageSelect.value = profile.language;
   remember(profile);
+  const summary = document.querySelector('#profile-summary');
+  if (summary) {
+    const language = currentLanguage() === 'zh' ? 'Chinese' : 'English';
+    summary.textContent = !profile
+      ? `No ${inputMode === 'image' ? `${language} ` : ''}profiles available. Choose Edit to create a profile.`
+      : !availableProfile(profile)
+        ? 'This profile’s voice is unavailable. Choose another profile or use Edit to change its voice.'
+        : `${profile.speed}× · ${profile.language === 'zh' ? 'Chinese' : 'English'}`;
+  }
+  selectionChanged();
 }
 export async function loadProfiles(useProfile = null, {language} = {}) {
   const response = await fetch('/api/voice-profiles');
@@ -54,13 +69,16 @@ export async function loadProfiles(useProfile = null, {language} = {}) {
     document.querySelector("#profile-status").textContent = "Profile saved. Image recognition language is unchanged; select a matching voice profile for this draft.";
   }
   if (previous && !profiles.some(profile => profile.id === previous.id)) {
-    document.querySelector('#profile-status').textContent = 'The selected profile was deleted. Using the available language default.';
+    document.querySelector('#profile-status').textContent = hasUsableSelectedProfile()
+      ? 'The selected profile was deleted. Using the available language default.'
+      : 'The selected profile was deleted. Choose Edit to create a profile.';
   }
   return profiles;
 }
 export function setVoiceControlsHidden(hidden) { document.querySelector('#voice-panel')?.classList.toggle('hidden', hidden); }
-export function registerVoiceControlEvents({onEdit} = {}) {
+export function registerVoiceControlEvents({onEdit, onChange} = {}) {
   editProfile = onEdit || editProfile;
+  selectionChanged = onChange || selectionChanged;
   languageSelect?.addEventListener('change', () => renderVoiceControls());
   selector?.addEventListener('change', rememberSelection);
   document.querySelector('#voice-edit')?.addEventListener('click', () => editProfile(selectedProfile(), profiles));

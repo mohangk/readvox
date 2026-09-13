@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Readvox</title>
-    <link rel="stylesheet" href="/static/styles.css?v=voice-editor-2" />
+    <link rel="stylesheet" href="/static/styles.css?v=voice-language-1" />
   </head>
   <body>
     <main class="app-shell">
@@ -45,6 +45,7 @@
               <select id="profile-select" aria-label="Voice"></select>
               <button id="voice-edit" class="secondary-action compact-action" type="button">Edit</button>
             </div>
+            <p id="profile-summary" class="voice-summary"></p>
             <p id="profile-status" class="status-line" aria-live="polite"></p>
           </div>
           <label class="toggle-row">
@@ -58,6 +59,7 @@
 
       <section id="profile-editor" class="view" aria-labelledby="profile-editor-title">
         <h1 id="profile-editor-title">Edit voice</h1>
+        <p id="profile-save-note" class="voice-summary">Save updates this profile. Save As creates another profile.</p>
         <div class="profile-save-actions">
           <button id="profile-save" class="primary-action" type="button">Save</button>
           <button id="profile-save-as" class="secondary-action" type="button">Save As…</button>
@@ -87,13 +89,10 @@
               <select id="instruction-speed" aria-label="Speech speed"></select>
             </label>
           </div>
-          <label class="field-label" for="instruction-model">
-            Model
-            <select id="instruction-model" aria-label="Instruction model"></select>
-          </label>
           <label class="field-label" for="instruction-prompt">
             Instructions
-            <textarea id="instruction-prompt" rows="8">Read in a calm long-form audiobook style. Use clear articulation, steady pacing, low vocal fatigue, natural sentence endings, and restrained expressiveness. Avoid theatrical delivery, sales energy, exaggerated intonation, whispering, vocal fry, or sharp news-anchor emphasis.</textarea>
+            <span id="instruction-capability-note" class="voice-summary"></span>
+            <textarea aria-describedby="instruction-capability-note" id="instruction-prompt" rows="8">Read in a calm long-form audiobook style. Use clear articulation, steady pacing, low vocal fatigue, natural sentence endings, and restrained expressiveness. Avoid theatrical delivery, sales energy, exaggerated intonation, whispering, vocal fry, or sharp news-anchor emphasis.</textarea>
           </label>
           <label class="field-label" for="instruction-text">
             Preview text
@@ -145,6 +144,6 @@
     </div>
 
     <audio id="audio-player"></audio>
-    <script type="module" src="/static/app.js?v=voice-editor-2"></script>
+    <script type="module" src="/static/app.js?v=voice-language-2"></script>
   </body>
 </html>
