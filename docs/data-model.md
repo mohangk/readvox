@@ -9,11 +9,13 @@ Readvox stores metadata in SQLite and bytes on the filesystem. The exact schema 
 - `data/audio/<generation_id>/full.mp3`: stitched continuous playback artifact.
 - `data/audio/voice-samples/<cache_key>.mp3`: derived voice sample cache files.
 - `data/images/<ocr_draft_id>/<ocr_draft_image_id>/`: source images for OCR drafts.
+- `data/voices/<bundle_hash>/`: durable cloned-voice reference WAVs and source manifests.
 
 ## Core Relationships
 
 ```mermaid
 erDiagram
+    voices ||--o{ voice_profiles : selected_by
     generations ||--o{ text_segments : has
     generations ||--o{ audio_segments : has
     generations ||--o| continuous_audio_artifacts : has
@@ -59,8 +61,14 @@ Voice sample audio is cached under `data/audio/voice-samples/` by provider/model
 - Deleting an unlinked OCR draft removes its stored source image directory.
 - Deleting an image generation force-deletes its linked OCR draft and image directories.
 
-## Voice profiles
+## Voice catalog and profiles
 
-`voice_profiles` stores ID, trimmed name, Unicode case-folded unique `name_key`, model, voice, language, speed, instructions, preview text, and creation/update timestamps. `profile_migrations` records one-time default initialization. Profile deletion has no generation/audio cleanup path.
+`voices` stores a stable ID/key, provider and provider voice ID, friendly name, kind, availability, one `model`, `languages_json`, `supports_instructions`, optional private `metadata_json`, and timestamps. Provider plus provider voice ID is unique. A multilingual voice has one row with multiple language codes. Profile speed, chosen language, instructions and preview text do not belong in catalog defaults.
 
-New profile-based generation `settings_json` snapshots `profile_id`, `profile_name`, `model`, `voice`, `language`, `speed`, and `instructions`. These are historical values, not live references. Legacy generations are never backfilled with assumed model metadata. Existing voice preferences are preserved independently of profiles.
+`voice_profiles` stores ID, trimmed name, Unicode case-folded unique `name_key`, required `voice_id` foreign key, language, speed, instructions, preview text and timestamps. It contains no model. Every profile is editable/deletable; its deletion leaves the referenced voice and all independent audio/reference assets intact.
+
+Explicit offline population synchronizes the selected provider's built-ins; normal refresh marks retired voices unavailable without deleting profiles. Clone installation writes the same catalog shape and adds durable metadata only. Exact WAVs and source manifests live below `data/voices/` and have no automatic cleanup flow. Back up SQLite, installed bundles and private workshop runs together.
+
+`profile_migrations` records forward schema changes and one-time default seeding. Migration 4 converts old raw/system profiles or multi-model catalogs to voice-owned models, removes obsolete columns/tables, preserves compatible IDs/settings/timestamps, and reports authorized incompatible-record cleanup. Profiles are never recreated after deletion by startup, sync or installation.
+
+Profile-based generation `settings_json` snapshots `profile_id`, `profile_name`, `voice_id`, `voice_name`, `provider`, `model`, raw `voice`, `language`, `speed`, and `instructions`. These are historical values, not live references. Catalog/model changes and profile deletion do not change active jobs or old entries. History displays saved friendly profile labels; absent historical model metadata stays unknown. Existing voice preferences remain independent.
