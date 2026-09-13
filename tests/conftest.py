@@ -15,9 +15,9 @@ from tts_app.config import Settings
 
 
 @pytest.fixture
-def test_settings(tmp_path):
+def unpopulated_settings(tmp_path):
     data_dir = tmp_path / "data"
-    return Settings(
+    settings = Settings(
         data_dir=data_dir,
         db_path=data_dir / "app.db",
         audio_dir=data_dir / "audio",
@@ -34,6 +34,22 @@ def test_settings(tmp_path):
         default_english_voice="Jennifer",
         default_chinese_voice="Cherry",
     )
+
+    return settings
+
+
+@pytest.fixture
+def test_settings(unpopulated_settings):
+    settings = unpopulated_settings
+    # Explicit catalog setup; production startup never populates provider voices.
+    from tts_app.providers.qwen_catalog import qwen_voice_definitions
+    from tts_app.storage import Storage
+    from tts_app.voice_storage import builtin_voice_key
+    storage = Storage(settings.db_path)
+    storage.init_schema(provider_name='fake')
+    storage.sync_provider_voices('fake', [{**voice, 'provider': 'fake',
+        'key': builtin_voice_key('fake', voice['provider_voice_id'])} for voice in qwen_voice_definitions()])
+    return settings
 
 
 def _patch_starlette_1_testclient_for_tests() -> None:

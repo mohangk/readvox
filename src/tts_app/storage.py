@@ -112,11 +112,16 @@ def _playback_telemetry_optional_int(value: Any, field_name: str) -> int | None:
     return value
 
 
-from tts_app.profile_storage import ProfileStorageMixin, ensure_profile_schema
+from tts_app.profile_storage import ProfileStorageMixin
 
 
-class Storage(ProfileStorageMixin):
+from tts_app.voice_storage import VoiceStorageMixin
+from tts_app.voice_migrations import migrate_voice_catalog
+
+
+class Storage(ProfileStorageMixin, VoiceStorageMixin):
     def __init__(self, db_path: Path):
+        self.profile_provider_name = "qwen"
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -135,9 +140,12 @@ class Storage(ProfileStorageMixin):
         finally:
             conn.close()
 
-    def init_schema(self) -> None:
+    def init_schema(self, provider_name="qwen") -> dict:
+        self.profile_provider_name = provider_name
         with self.connection() as conn:
-            ensure_profile_schema(conn)
+            conn.execute("BEGIN IMMEDIATE")
+            self.voice_migration_report = migrate_voice_catalog(conn, provider_name)
+            conn.commit()
             conn.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS generations (
@@ -239,6 +247,7 @@ class Storage(ProfileStorageMixin):
                 WHERE linked_generation_id IS NOT NULL
                 """
             )
+        return self.voice_migration_report
 
     def _ensure_generation_source_type_allows_image(self, conn: sqlite3.Connection) -> None:
         row = conn.execute(

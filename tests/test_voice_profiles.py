@@ -8,7 +8,7 @@ def test_profiles_crud_and_validation(test_settings):
         assert response.status_code == 200
         defaults = response.json()
         assert {p['language'] for p in defaults} == {'en', 'zh'}
-        profile = {k: defaults[0][k] for k in ('model','voice','language','speed','instructions','preview_text')}
+        profile = {k: defaults[0][k] for k in ('voice_id','language','speed','instructions','preview_text')}
         profile['name'] = '  Reading  '
         created = client.post('/api/voice-profiles', json=profile)
         assert created.status_code == 201
@@ -37,7 +37,7 @@ def test_profile_generation_snapshots_settings_and_preserves_audio(test_settings
         generation_id = response.json()['generation_id']
         detail = app.state.storage.get_generation(generation_id)
         assert detail['generation']['settings']['profile_id'] == profile['id']
-        assert detail['generation']['settings']['model'] == profile['model']
+        assert detail['generation']['settings']['model'] == app.state.storage.get_voice(profile['voice_id'])['model']
         assert detail['generation']['settings']['instructions'] == 'Read softly.'
         audio = list((test_settings.audio_dir / str(generation_id)).glob('*.mp3'))
         assert audio
@@ -51,7 +51,7 @@ def test_profile_generation_snapshots_settings_and_preserves_audio(test_settings
 def test_profile_rejects_explicit_overrides_and_missing_profile(test_settings):
     with TestClient(create_app(test_settings, run_background_inline=True)) as client:
         profile = client.get('/api/voice-profiles').json()[0]
-        for field, value in [('voice', 'Kai'), ('speed', 1), ('language', 'en'), ('model', profile['model']), ('instructions', '')]:
+        for field, value in [('voice', 'Kai'), ('speed', 1), ('language', 'en'), ('model', 'conflicting-model'), ('instructions', '')]:
             assert client.post('/api/generations/text', json={'text': 'Hello', 'profile_id': profile['id'], field: value}).status_code == 400
         assert client.post('/api/generations/text', json={'text': 'Hello', 'profile_id': 99999}).status_code == 404
         legacy = client.post('/api/generations/text', json={'text': 'Hello', 'voice': 'Legacy', 'speed': 1.1, 'language': 'zh'})
@@ -99,6 +99,7 @@ def test_profiles_unicode_unique_and_seed_once(test_settings):
 def test_legacy_voice_import_profile_and_invalid_synthesis(test_settings):
     with TestClient(create_app(test_settings, run_background_inline=True)) as client:
         profile = client.get('/api/voice-profiles').json()[0]
+        profile.pop('voice_id')  # A legacy client sends only provider voice/model identity.
         profile.update(name='Imported Jennifer', voice='Jennifer', model='qwen3-tts-flash-realtime', instructions='')
         assert client.post('/api/voice-profiles', json=profile).status_code == 201
         profile['name'] = 'Bad'
@@ -131,7 +132,8 @@ async def _snapshot_during_job(test_settings):
     app = create_app(test_settings)
     storage = app.state.storage
     profile = storage.list_voice_profiles()[0]
-    snapshot = {key:profile[key] for key in ('model','voice','speed','language','instructions')}
+    from tts_app.generation_settings import GenerationSynthesisRequest, resolve_generation_settings
+    snapshot = resolve_generation_settings(GenerationSynthesisRequest(profile_id=profile['id']), storage, test_settings, app.state.service.provider)
     service = app.state.service
     generation = await service.create_from_text('Sentence number one. ' * 20, title='Snapshot', voice=profile['voice'], settings=snapshot)
     calls = []

@@ -76,9 +76,9 @@ def test_rebuild_ocr_draft_combined_text_uses_image_text_in_order(test_settings)
     assert storage.get_ocr_draft(draft_id)["combined_text"] == "first\n\nthird"
 
 
-def test_init_schema_migrates_existing_ocr_drafts_to_combined_text(test_settings):
-    test_settings.db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(test_settings.db_path)
+def test_init_schema_migrates_existing_ocr_drafts_to_combined_text(unpopulated_settings):
+    unpopulated_settings.db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(unpopulated_settings.db_path)
     try:
         conn.executescript(
             """
@@ -132,7 +132,7 @@ def test_init_schema_migrates_existing_ocr_drafts_to_combined_text(test_settings
     finally:
         conn.close()
 
-    storage = Storage(test_settings.db_path)
+    storage = Storage(unpopulated_settings.db_path)
     storage.init_schema()
 
     assert storage.get_ocr_draft(draft_id)["combined_text"] == "old first\n\nold second"
@@ -154,9 +154,9 @@ def test_update_ocr_draft_image_text_and_language(test_settings):
     assert draft["language"] == "zh"
 
 
-def test_init_schema_resets_incompatible_ocr_tables(test_settings):
-    test_settings.db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(test_settings.db_path)
+def test_init_schema_resets_incompatible_ocr_tables(unpopulated_settings):
+    unpopulated_settings.db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(unpopulated_settings.db_path)
     try:
         conn.executescript(
             """
@@ -222,7 +222,7 @@ def test_init_schema_resets_incompatible_ocr_tables(test_settings):
     finally:
         conn.close()
 
-    storage = Storage(test_settings.db_path)
+    storage = Storage(unpopulated_settings.db_path)
     storage.init_schema()
 
     assert storage.list_ocr_drafts() == []
