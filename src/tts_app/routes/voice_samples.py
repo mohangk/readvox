@@ -5,17 +5,18 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Response
 from fastapi.responses import HTMLResponse
-from tts_app.synthesis import (VoiceSampleRequest, InstructionVoiceSampleRequest, SAMPLE_TEXT, SAMPLE_LANGUAGES, _validate_language, _instruction_capabilities, _instruction_model, validate_synthesis)
+from tts_app.synthesis import (VoiceSampleRequest, InstructionVoiceSampleRequest, SAMPLE_TEXT, SAMPLE_LANGUAGES, _validate_language)
 
 from tts_app.providers.base import TTSOptions
-from tts_app.providers.options import InstructionModelCapabilities, InstructionSampleCapabilities, SelectOption
+from tts_app.voice_catalog import public_voice, resolve_synthesis_voice
+from tts_app.providers.options import SelectOption
 from tts_app.voice_samples import VoiceSampleCache, VoiceSampleCacheError
 
 
 logger = logging.getLogger(__name__)
 
 
-def create_voice_sample_router(voice_sample_cache: VoiceSampleCache) -> APIRouter:
+def create_voice_sample_router(voice_sample_cache: VoiceSampleCache, storage, provider) -> APIRouter:
     router = APIRouter()
 
     @router.get("/voice-sample", response_class=HTMLResponse)
@@ -24,24 +25,15 @@ def create_voice_sample_router(voice_sample_cache: VoiceSampleCache) -> APIRoute
 
     @router.get("/api/voice-sample/options")
     async def instruction_voice_sample_options():
-        capabilities = _instruction_capabilities(voice_sample_cache)
-        default_model = _instruction_model(capabilities, capabilities.default_model)
+        catalog = [public_voice(voice) for voice in storage.list_voices(provider.name)]
+        default_voice = next((voice for voice in catalog if voice['available'] and 'en' in voice['languages']), None)
         return {
+            "voice_catalog": catalog,
+            "default_voice_id": default_voice['id'] if default_voice else None,
             "default_language": "en",
-            "default_model": capabilities.default_model,
             "default_speed": 1.0,
-            "default_voice": capabilities.default_voice,
-            "languages": [
-                {"value": "en", "label": "English"},
-                {"value": "zh", "label": "Chinese"},
-            ],
-            "models": _option_dicts(tuple(model.option for model in capabilities.models)),
-            "voices": _option_dicts(default_model.voices),
-            "voices_by_model": {
-                str(model.option.value): _option_dicts(model.voices)
-                for model in capabilities.models
-            },
-            "speeds": _option_dicts(capabilities.speeds),
+            "languages": [{"value": key, "label": value} for key, value in SAMPLE_LANGUAGES.items()],
+            "speeds": _option_dicts(provider.speed_options),
         }
 
     @router.post("/api/voice-sample")
@@ -73,10 +65,10 @@ def create_voice_sample_router(voice_sample_cache: VoiceSampleCache) -> APIRoute
 
     @router.post("/api/voice-sample/instruction")
     async def instruction_voice_sample(payload: InstructionVoiceSampleRequest):
-        validate_synthesis(voice_sample_cache, payload)
+        selected=resolve_synthesis_voice(storage,provider,payload)
         options = TTSOptions(
-            voice=payload.voice,
-            model=payload.model,
+            voice=selected['provider_voice_id'],
+            model=selected['model'],
             speed=payload.speed,
             language=SAMPLE_LANGUAGES[payload.language],
             audio_format="mp3",
@@ -87,13 +79,13 @@ def create_voice_sample_router(voice_sample_cache: VoiceSampleCache) -> APIRoute
                 text=payload.sample_text,
                 options=options,
                 language=payload.language,
-                model=payload.model,
+                model=selected['model'],
             )
         except VoiceSampleCacheError as exc:
             logger.exception(
                 "instruction_voice_sample_provider_failed model=%s voice=%s language=%s error=%s",
-                payload.model,
-                payload.voice,
+                selected['model'],
+                selected['provider_voice_id'],
                 payload.language,
                 exc,
             )

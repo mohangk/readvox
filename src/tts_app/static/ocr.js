@@ -151,8 +151,9 @@ function hasReviewedOcrText() {
   return reviewedOcrText().trim().length > 0;
 }
 
-function updateGenerateOcrAudioState() {
+export function updateGenerateOcrAudioState() {
   generateOcrAudioButton.disabled =
+    generateOcrAudioButton.getAttribute('aria-busy') === 'true' || appCallbacks.hasUsableProfile?.() === false ||
     !state.currentOcrDraftId || Boolean(state.currentOcrDraft?.linked_generation_id) || !hasReviewedOcrText();
 }
 
@@ -558,7 +559,8 @@ async function clearActiveOcrDraft() {
 }
 
 async function generateOcrAudio(button = null) {
-  if (!state.currentOcrDraftId || state.currentOcrDraft?.linked_generation_id || !hasReviewedOcrText()) {
+  if (generateOcrAudioButton.getAttribute('aria-busy') === 'true' || appCallbacks.hasUsableProfile?.() === false ||
+      !state.currentOcrDraftId || state.currentOcrDraft?.linked_generation_id || !hasReviewedOcrText()) {
     return;
   }
   await withButtonBusy(button, "Generating...", async () => {
