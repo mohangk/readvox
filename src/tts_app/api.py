@@ -88,7 +88,7 @@ def create_app(settings: Settings | None = None, run_background_inline: bool = F
     active_settings = settings or load_settings()
     provider = get_provider(active_settings)
     storage = Storage(active_settings.db_path)
-    storage.init_schema(provider_name=provider.name)
+    storage.init_schema()
     broker = EventBroker()
     voices = storage.list_voices(provider.name)
     defaults = default_profiles(voices)

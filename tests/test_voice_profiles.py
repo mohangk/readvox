@@ -107,15 +107,12 @@ def test_legacy_voice_import_profile_and_invalid_synthesis(test_settings):
             assert client.post('/api/voice-profiles', json={**profile, field: value}).status_code == status
 
 
-def test_profile_schema_migration_preserves_history_and_preferences(test_settings):
+def test_repeated_startup_preserves_history_and_preferences(test_settings):
     from tts_app.storage import Storage
     storage = Storage(test_settings.db_path)
     storage.init_schema()
     generation = storage.create_generation(source_type='text', title='Old', url=None, full_text='Old audio', provider='qwen', voice='Jennifer', settings={'speed':1.0})
     storage.set_voice_preference('Jennifer', 'en', True)
-    with storage.connection() as conn:
-        conn.execute('DROP TABLE voice_profiles')
-        conn.execute('DROP TABLE profile_migrations')
     audio_dir = test_settings.audio_dir / str(generation)
     audio_dir.mkdir(parents=True)
     audio_file = audio_dir / 'saved.mp3'

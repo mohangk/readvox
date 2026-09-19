@@ -3,13 +3,13 @@ from pathlib import Path
 import sqlite3
 
 from tts_app.providers.qwen_catalog import qwen_voice_definitions
-from tts_app.voice_migrations import migrate_voice_catalog, preview_voice_database
+from tts_app.voice_catalog_snapshot import preview_voice_database
+from tts_app.voice_schema import ensure_current_voice_schema
 from tts_app.voice_storage import reconcile_provider_voices, validate_provider_definitions
 
 
-
 def sync_voice_catalog(settings, provider_name='qwen', check_only=False, *, definitions=None):
-    """Explicit provider owns provider-less legacy identities during migration.
+    """Refresh the selected provider in a current or freshly initialized catalog.
 
     Routine sync never cleans profiles. Preflight requires a quiescent POSIX DB;
     busy connections fail before writes instead of producing a mixed snapshot.
@@ -29,10 +29,10 @@ def sync_voice_catalog(settings, provider_name='qwen', check_only=False, *, defi
     try:
         with preview:
             preview.execute('BEGIN IMMEDIATE')
-            migration = migrate_voice_catalog(preview, provider_name)
+            ensure_current_voice_schema(preview)
             changes = reconcile_provider_voices(preview, provider_name, values)
-        report = dict(target=str(path), provider=provider_name, migration_provider=provider_name, check_only=check_only,
-            target_exists=existed, schema_upgraded=migration['schema_upgraded'], migration=migration, **changes)
+        report = dict(target=str(path), provider=provider_name, check_only=check_only,
+            target_exists=existed, **changes)
     finally:
         preview.close()
     if check_only:
@@ -44,8 +44,8 @@ def sync_voice_catalog(settings, provider_name='qwen', check_only=False, *, defi
     try:
         with conn:
             conn.execute('BEGIN IMMEDIATE')
-            migration = migrate_voice_catalog(conn, provider_name)
+            ensure_current_voice_schema(conn)
             changes = reconcile_provider_voices(conn, provider_name, values)
-        return {**report, 'schema_upgraded': migration['schema_upgraded'], 'migration': migration, **changes}
+        return {**report, **changes}
     finally:
         conn.close()
