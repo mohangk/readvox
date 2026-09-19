@@ -505,9 +505,9 @@ def test_list_generations_includes_settings_and_progress(test_settings):
     assert row["settings"]["speed"] == 1.25
     assert row["progress_percent"] == 100
 
-def test_init_schema_migrates_existing_generation_progress_columns(test_settings):
-    test_settings.db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(test_settings.db_path)
+def test_init_schema_migrates_existing_generation_progress_columns(unpopulated_settings):
+    unpopulated_settings.db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(unpopulated_settings.db_path)
     try:
         conn.execute(
             """
@@ -531,9 +531,9 @@ def test_init_schema_migrates_existing_generation_progress_columns(test_settings
     finally:
         conn.close()
 
-    Storage(test_settings.db_path).init_schema()
+    Storage(unpopulated_settings.db_path).init_schema()
 
-    conn = sqlite3.connect(test_settings.db_path)
+    conn = sqlite3.connect(unpopulated_settings.db_path)
     try:
         columns = {row[1] for row in conn.execute("PRAGMA table_info(generations)").fetchall()}
     finally:
@@ -542,9 +542,9 @@ def test_init_schema_migrates_existing_generation_progress_columns(test_settings
     assert "last_segment_index" in columns
     assert "progress_percent" in columns
 
-def test_init_schema_migrates_existing_generation_source_type_check_for_image(test_settings):
-    test_settings.db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(test_settings.db_path)
+def test_init_schema_migrates_existing_generation_source_type_check_for_image(unpopulated_settings):
+    unpopulated_settings.db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(unpopulated_settings.db_path)
     try:
         conn.execute(
             """
@@ -570,7 +570,7 @@ def test_init_schema_migrates_existing_generation_source_type_check_for_image(te
     finally:
         conn.close()
 
-    storage = Storage(test_settings.db_path)
+    storage = Storage(unpopulated_settings.db_path)
     storage.init_schema()
 
     generation_id = storage.create_generation("image", "Image text", None, "OCR text", "fake", "Test", {})
@@ -767,9 +767,9 @@ def test_voice_preferences_are_language_scoped(test_settings):
         ("Cherry", "zh"): False,
     }
 
-def test_init_schema_migrates_voice_preferences_to_english(test_settings):
-    test_settings.db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(test_settings.db_path)
+def test_init_schema_migrates_voice_preferences_to_english(unpopulated_settings):
+    unpopulated_settings.db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(unpopulated_settings.db_path)
     conn.execute(
         """
         CREATE TABLE voice_preferences (
@@ -783,7 +783,7 @@ def test_init_schema_migrates_voice_preferences_to_english(test_settings):
     conn.commit()
     conn.close()
 
-    storage = Storage(test_settings.db_path)
+    storage = Storage(unpopulated_settings.db_path)
     storage.init_schema()
 
     assert storage.list_voice_preferences() == {("Cherry", "en"): True}

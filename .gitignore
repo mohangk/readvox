@@ -13,3 +13,7 @@ logs/
 *.mp3
 dist/
 *.egg-info/
+# Retained private listening artifacts from the approved cloning experiments.
+src/tts_app/static/session-lab-data/
+src/tts_app/static/voice-gallery-data/
+src/tts_app/static/clone-lab-data/

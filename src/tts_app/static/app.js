@@ -1,3 +1,4 @@
+import { renderHistoryItems } from "./history.js?v=voice-language-1";
 import {
   audioPlayer,
   autoplayInput,
@@ -22,7 +23,7 @@ import {
   urlModeButton,
   views,
 } from "./dom.js?v=playback-progress-1";
-import { initOcr, registerOcrEvents, syncOcrInputMode } from "./ocr.js?v=profiles-1";
+import { initOcr, registerOcrEvents, syncOcrInputMode, updateGenerateOcrAudioState } from "./ocr.js?v=voice-language-2";
 import {
   buildProgressPayload,
   chooseResumeSegmentIndex,
@@ -33,7 +34,7 @@ import {
 } from "./playback.js?v=playback-progress-1";
 import { state } from "./state.js?v=playback-progress-1";
 import { createPlaybackTelemetry } from "./telemetry.js?v=playback-progress-1";
-import { escapeHtml, formatSpeed, withButtonBusy } from "./utils.js?v=playback-progress-1";
+import { escapeHtml, withButtonBusy } from "./utils.js?v=playback-progress-1";
 import {
   clearSamplePlayback,
   currentLanguage,
@@ -44,8 +45,9 @@ import {
   refreshGenerationPayload,
   loadProfiles,
   selectedProfile,
-} from "./profile-selection.js?v=voice-editor-2";
-import { createProfileEditor } from "./profile-editor.js?v=voice-editor-2";
+  hasUsableSelectedProfile,
+} from "./profile-selection.js?v=voice-language-2";
+import { createProfileEditor } from "./profile-editor.js?v=voice-language-2";
 
 const playbackTelemetry = createPlaybackTelemetry();
 const enqueueProgressSave = createQueuedProgressSaver(persistProgress);
@@ -71,6 +73,11 @@ function showView(viewId) {
   if (viewId === "history-view") {
     loadHistory();
   }
+}
+
+function updateGenerationControls() {
+  generateSubmitButton.disabled = !hasUsableSelectedProfile() || generateSubmitButton.getAttribute('aria-busy') === 'true';
+  updateGenerateOcrAudioState();
 }
 
 function setInputMode(mode) {
@@ -250,48 +257,7 @@ function releaseWakeLock() {
 }
 
 function renderHistory() {
-  const query = historySearch.value.trim().toLowerCase();
-  const rows = state.generations.filter((item) => {
-    const text = `${item.title} ${item.text_preview} ${item.url ?? ""} ${item.voice} ${item.settings?.speed ?? ""}`.toLowerCase();
-    return text.includes(query);
-  });
-
-  if (rows.length === 0) {
-    historyList.innerHTML = '<div class="history-item">No generations found</div>';
-    return;
-  }
-
-  historyList.innerHTML = rows
-    .map((item) => {
-      const created = item.created_at ? new Date(`${item.created_at}Z`).toLocaleString() : "";
-      const speed = item.settings?.speed ?? 1;
-      const progress = Number(item.progress_percent || 0);
-      const urlMarkup = item.url
-        ? `<div class="history-item-url">${escapeHtml(item.url)}</div>`
-        : "";
-      return `
-        <article class="history-item" data-generation-id="${item.id}">
-          <div class="history-item-title">${escapeHtml(item.title)}</div>
-          <div class="history-item-meta">${escapeHtml(item.status)} ${escapeHtml(created)}</div>
-          ${urlMarkup}
-          <div class="history-item-preview">${escapeHtml(item.text_preview)}</div>
-          <details class="history-details">
-            <summary>Details</summary>
-            <dl>
-              <div><dt>Voice</dt><dd>${escapeHtml(item.voice)}</dd></div>
-              <div><dt>Speed</dt><dd>${escapeHtml(formatSpeed(speed))}</dd></div>
-              <div><dt>Provider</dt><dd>${escapeHtml(item.provider)}</dd></div>
-              <div><dt>Progress</dt><dd>${escapeHtml(progress)}%</dd></div>
-            </dl>
-          </details>
-          <div class="history-actions">
-            <button class="secondary-action compact-action" type="button" data-action="open" data-generation-id="${item.id}">Open</button>
-            <button class="danger-action compact-action" type="button" data-action="delete" data-generation-id="${item.id}">Delete</button>
-          </div>
-        </article>
-      `;
-    })
-    .join("");
+  historyList.innerHTML = renderHistoryItems(state.generations, historySearch.value);
 }
 
 async function deleteGeneration(generationId, button = null) {
@@ -674,7 +640,7 @@ playPauseButton.addEventListener("click", () => {
   audioPlayer.pause();
 });
 
-registerVoiceControlEvents({ onEdit: openProfileEditor });
+registerVoiceControlEvents({ onEdit: openProfileEditor, onChange: updateGenerationControls });
 
 audioPlayer.addEventListener("play", () => {
   playPauseButton.textContent = "Pause";
@@ -745,6 +711,7 @@ initOcr({
   renderOptions: renderVoiceControls,
   currentLanguage,
   voiceGenerationPayload: refreshGenerationPayload,
+  hasUsableProfile: hasUsableSelectedProfile,
   stopPlayback,
   openGeneration,
 });

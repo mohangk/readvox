@@ -24,7 +24,7 @@ from tts_app.providers.registry import get_provider
 from tts_app.routes.ocr import create_ocr_router
 from tts_app.routes.playback import create_playback_router
 from tts_app.routes.shared import schedule_generation
-from tts_app.routes.voice_profiles import create_voice_profile_router
+from tts_app.routes.voice_profiles import create_voice_profile_router, create_voice_catalog_router
 from tts_app.routes.voice_samples import create_voice_sample_router
 from tts_app.storage import PLAYBACK_TELEMETRY_EVENT_NAMES, Storage, validate_playback_telemetry_session_id
 from tts_app.voice_samples import VoiceSampleCache
@@ -86,13 +86,18 @@ TTS_LANGUAGES = {
 
 def create_app(settings: Settings | None = None, run_background_inline: bool = False) -> FastAPI:
     active_settings = settings or load_settings()
-    storage = Storage(active_settings.db_path)
-    storage.init_schema()
-    broker = EventBroker()
     provider = get_provider(active_settings)
-    capabilities = getattr(provider, "instruction_sample_capabilities", None)
-    if capabilities:
-        storage.initialize_voice_profiles(default_profiles(capabilities))
+    storage = Storage(active_settings.db_path)
+    storage.init_schema(provider_name=provider.name)
+    broker = EventBroker()
+    voices = storage.list_voices(provider.name)
+    defaults = default_profiles(voices)
+    if defaults:
+        storage.initialize_voice_profiles(defaults)
+    for voice in voices:
+        reference = voice['metadata'].get('reference_path')
+        if reference and not (active_settings.data_dir / reference).is_file():
+            logger.warning('voice_reference_missing voice_key=%s', voice['key'])
     voice_sample_cache = VoiceSampleCache(active_settings, provider)
     ocr_provider = get_ocr_provider(active_settings)
     service = GenerationService(
@@ -111,8 +116,9 @@ def create_app(settings: Settings | None = None, run_background_inline: bool = F
     app.state.service = service
     app.state.ocr_provider = ocr_provider
     app.include_router(create_playback_router(settings=active_settings, storage=storage, service=service))
-    app.include_router(create_voice_profile_router(storage, voice_sample_cache))
-    app.include_router(create_voice_sample_router(voice_sample_cache=voice_sample_cache))
+    app.include_router(create_voice_profile_router(storage, provider))
+    app.include_router(create_voice_catalog_router(storage))
+    app.include_router(create_voice_sample_router(voice_sample_cache=voice_sample_cache, storage=storage, provider=provider))
     app.include_router(
         create_ocr_router(
             settings=active_settings,

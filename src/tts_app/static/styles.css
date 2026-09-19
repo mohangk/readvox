@@ -107,3 +107,6 @@ textarea { resize: vertical; min-height: 220px; }
 .named-voice-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
 .profile-save-actions button { padding-left: 8px; padding-right: 8px; }
 #voice-panel .field-label { margin-top: .75rem; }
+
+.voice-summary { color: var(--muted, #64748b); font-size: .9rem; line-height: 1.5; }
+.voice-summary:empty { display: none; }

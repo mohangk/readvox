@@ -13,7 +13,6 @@ from tts_app.providers.base import AudioChunk, ProviderError, TTSOptions
 from tts_app.providers.options import (
     QWEN_CHINESE_VOICES,
     QWEN_ENGLISH_VOICES,
-    QWEN_INSTRUCTION_SAMPLE_CAPABILITIES,
     SPEED_OPTIONS,
 )
 
@@ -25,7 +24,6 @@ class QwenTTSProvider:
     english_voices = QWEN_ENGLISH_VOICES
     chinese_voices = QWEN_CHINESE_VOICES
     speed_options = SPEED_OPTIONS
-    instruction_sample_capabilities = QWEN_INSTRUCTION_SAMPLE_CAPABILITIES
 
     def __init__(
         self,
