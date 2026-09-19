@@ -9,7 +9,7 @@ def storage(tmp_path):
 
 @pytest.fixture
 def definition():
-    return dict(key='readvox-kai-v1',provider='fake',model='qwen3-tts-vc-realtime-2026-01-15',voice='test-enrolled-kai',language='en',name='Kai Narrator',speed=1,instructions='',preview_text='Reference',reference_path='voices/test/reference.wav',reference_sha256='a'*64,provenance={'selection':16})
+    return dict(key='readvox-kai-v1',provider='fake',model='qwen3-tts-vc-realtime-2026-01-15',voice='test-enrolled-kai',language='en',name='Kai Narrator',speed=1,instructions='',preview_text='Reference',reference_path='voices/test/reference.wav',reference_sha256='a'*64,provenance={'source_run_id':'narrators-v1'})
 
 @pytest.mark.parametrize('field,value', [
     ('key', '../bad'), ('name', ' '), ('speed', float('nan')), ('speed', True),

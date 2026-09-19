@@ -79,7 +79,7 @@ def installation_voice(value):
 
 
 def preflight_voice_installations(db_path, definitions, *, reuse_unchanged_source=False):
-    """Read-only validation also accepts a database awaiting the catalog migration."""
+    """Validate against an isolated snapshot without changing the installed catalog."""
     validated=[validate_clone_installation(value) for value in definitions]
     if len({value['key'] for value in validated})!=len(validated):
         raise ValueError('Duplicate voice key')
@@ -90,24 +90,23 @@ def preflight_voice_installations(db_path, definitions, *, reuse_unchanged_sourc
     if not path.exists():
         return validated
     import sqlite3
-    from tts_app.voice_migrations import migrate_voice_catalog, preview_voice_database
+    from tts_app.voice_catalog_snapshot import preview_voice_database
+    from tts_app.voice_schema import ensure_current_voice_schema
     conn = preview_voice_database(path)
     conn.row_factory = sqlite3.Row
-    with conn:
-        migrate_voice_catalog(conn, validated[0]['provider'] if validated else 'qwen')
     try:
-        tables={row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        with conn:
+            ensure_current_voice_schema(conn)
         for index,definition in enumerate(validated):
             candidate=installation_voice(definition)
             existing=None
-            if 'voices' in tables:
-                row=conn.execute('SELECT * FROM voices WHERE key=?',(definition['key'],)).fetchone()
-                if row:
-                    existing={key:voice_record(row)[key] for key in candidate}
-                identity=conn.execute('SELECT key FROM voices WHERE provider=? AND provider_voice_id=?',
-                    (definition['provider'],definition['voice'])).fetchone()
-                if identity and identity['key']!=definition['key']:
-                    raise ValueError('Provider voice identity is already installed under another key')
+            row=conn.execute('SELECT * FROM voices WHERE key=?',(definition['key'],)).fetchone()
+            if row:
+                existing={key:voice_record(row)[key] for key in candidate}
+            identity=conn.execute('SELECT key FROM voices WHERE provider=? AND provider_voice_id=?',
+                (definition['provider'],definition['voice'])).fetchone()
+            if identity and identity['key']!=definition['key']:
+                raise ValueError('Provider voice identity is already installed under another key')
             if existing:
                 def content(value):
                     metadata=value['metadata']

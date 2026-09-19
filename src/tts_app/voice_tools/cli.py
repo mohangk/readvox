@@ -47,10 +47,6 @@ def parser():
     comparison.add_argument('--check', action='store_true')
     inspect = commands.add_parser('inspect', help='Inspect local verified artifacts without cloud lookup')
     inspect.add_argument('--manifest', type=Path, required=True)
-    legacy = commands.add_parser('import-legacy', help='Copy a historical comparison into durable artifacts, offline')
-    legacy.add_argument('--manifest', type=Path, required=True)
-    legacy.add_argument('--output', type=Path, required=True)
-    legacy.add_argument('--check', action='store_true')
     installation = commands.add_parser('install', help='Install approved voices into SQLite and durable reference storage, offline')
     installation.add_argument('--manifest', type=Path, required=True)
     installation.add_argument('--accept', nargs='+', help='Explicitly accept selected stable voice keys')
@@ -69,18 +65,17 @@ async def dispatch(args, *, provider=None, enrollment=None):
                                accepted_keys=args.accept, speed=args.speed)
         if not args.check and args.accept:
             data = json.loads(args.manifest.read_text())
-            if data.get('schema_version') == 1:
-                changed = False
-                for voice in data['voices']:
-                    if voice['key'] in args.accept:
-                        previous = voice.get('acceptance') or {}
-                        speed = args.speed if args.speed is not None else previous.get('speed', voice['speed'])
-                        if previous.get('key') != voice['key'] or previous.get('speed') != speed:
-                            voice['acceptance'] = {'key': voice['key'], 'speed': speed,
-                                                   'accepted_at': timestamp(), 'source': 'operator'}
-                            changed = True
-                if changed:
-                    save_manifest(args.manifest, data)
+            changed = False
+            for voice in data['voices']:
+                if voice['key'] in args.accept:
+                    previous = voice.get('acceptance') or {}
+                    speed = args.speed if args.speed is not None else previous.get('speed', voice['speed'])
+                    if previous.get('key') != voice['key'] or previous.get('speed') != speed:
+                        voice['acceptance'] = {'key': voice['key'], 'speed': speed,
+                                               'accepted_at': timestamp(), 'source': 'operator'}
+                        changed = True
+            if changed:
+                save_manifest(args.manifest, data)
         installed = install_clone_manifest(args.manifest, settings=settings, check_only=args.check,
                                            accepted_keys=args.accept, speed=args.speed)
         print(json.dumps([{'name': profile['name'], 'key': profile['key']}
@@ -89,10 +84,6 @@ async def dispatch(args, *, provider=None, enrollment=None):
     if args.command == 'inspect':
         data = load_manifest(args.manifest)
         print(json.dumps(data, ensure_ascii=False, indent=2))
-        return 0
-    if args.command == 'import-legacy':
-        from tts_app.voice_tools.legacy_import import import_legacy_comparison
-        print(import_legacy_comparison(args.manifest, args.output, check=args.check))
         return 0
     settings = load_settings()
     if args.command == 'enroll':

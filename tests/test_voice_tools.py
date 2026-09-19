@@ -278,3 +278,11 @@ def test_generated_audio_symlink_escape_rejected_before_calls(tmp_path):
     assert main(args + ['--resume', str(path)], provider=provider) == 1
     assert not provider.calls
     assert path.read_bytes() == before and outside.read_bytes() == b'Original bytes'
+
+
+def test_retired_import_command_rejects_without_creating_artifacts(tmp_path):
+    output = tmp_path / 'imported'
+    with pytest.raises(SystemExit) as error:
+        main(['import-legacy', '--manifest', str(tmp_path / 'missing.json'), '--output', str(output)])
+    assert error.value.code == 2
+    assert not output.exists()
