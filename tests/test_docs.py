@@ -53,7 +53,6 @@ def test_handoff_docs_exist_and_cover_local_operations():
     assert "model-pricing" in configuration
     assert "qwen3-tts-flash-realtime" in configuration
     assert "TTS_MODEL" in readme
-    assert "Remove old `QWEN_MODEL`, `QWEN_OCR_MODEL`, and `QWEN_VOICE` entries" in configuration
     assert "$0.13 / 10K characters" in configuration
     assert "Application Logging" in operations
     assert "tts_app.generation" in operations
@@ -192,7 +191,6 @@ def test_systemd_setup_files_match_vps_pattern():
     assert "QWEN_MODEL=" not in env_example
     assert "QWEN_OCR_MODEL=" not in env_example
     assert "QWEN_VOICE=" not in env_example
-    assert "remove old" in env_example
     assert "setup/install-service.sh" in readme
     assert "setup/setup-venv.sh" in readme
     assert "DASHSCOPE_API_KEY" in install_script

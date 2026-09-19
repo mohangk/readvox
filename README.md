@@ -9,7 +9,7 @@ The app focuses on long-form reading. It generates audio incrementally so playba
 - Generate speech from pasted text.
 - Fetch and extract simple HTML article URLs.
 - Upload or capture page images, review OCR output, then generate audio from the reviewed text.
-- Choose named, saved voice profiles with voice, speed, model, instructions, and cached previews.
+- Choose named, saved voice profiles with catalog voice, language, speed, instructions, and cached previews.
 - Edit profiles in-app or at `/voice-sample`; preview unsaved changes and save without losing input drafts.
 - Play long articles through one continuous audio endpoint backed by incrementally stitched MP3 segments.
 - Track segment-based progress and keep the currently read text highlighted during continuous playback.
@@ -52,40 +52,38 @@ For the exact current database shape, see [docs/schema.sql](docs/schema.sql). Fo
 
 ## Quick Start
 
+For usable speech and the profile editor, configure Qwen and populate its built-in voices. Copy the environment example only if `.envrc.local` does not already exist:
+
 ```bash
 python -m venv .venv
-. .venv/bin/activate
-pip install -e ".[dev]"
-TTS_PROVIDER=fake .venv/bin/uvicorn tts_app.api:create_app --factory --host 127.0.0.1 --port 8001
+.venv/bin/pip install -e ".[dev]"
+cp setup/envrc.local.example .envrc.local
+chmod 0600 .envrc.local
 ```
 
-Open `http://127.0.0.1:8001`.
-
-Use the fake provider for development and tests. It writes deterministic audio-like files and does not call external services.
-
-## Real Providers
-
-Readvox currently supports Qwen realtime TTS and Qwen OCR through provider adapters.
+Edit `.envrc.local` to set `DASHSCOPE_API_KEY`. The example selects `TTS_PROVIDER=qwen`, `OCR_PROVIDER=qwen`, and `TTS_MODEL=qwen3-tts-instruct-flash-realtime`. Set `TTS_DATA_DIR` to your checkout’s data directory if it is not `/home/mohan/tts/data`. Keep the file private.
 
 ```bash
-TTS_PROVIDER=qwen
-OCR_PROVIDER=qwen
-DASHSCOPE_API_KEY=...
-TTS_MODEL=qwen3-tts-instruct-flash-realtime
-OCR_MODEL=qwen-vl-ocr
-QWEN_REALTIME_URL=wss://dashscope-intl.aliyuncs.com/api-ws/v1/realtime
-TTS_DEFAULT_ENGLISH_VOICE=Kai
-TTS_DEFAULT_CHINESE_VOICE=Cherry
+set -a
+source .envrc.local
+set +a
+.venv/bin/python scripts/populate_voice_catalog.py --provider qwen --check
+.venv/bin/python scripts/populate_voice_catalog.py --provider qwen
+.venv/bin/uvicorn tts_app.api:create_app --factory --host 127.0.0.1 --port 8001
 ```
 
-Provider setup, pricing notes, and environment variables live in [docs/configuration.md](docs/configuration.md).
+Catalog population is offline and requires no credentials. Open `http://127.0.0.1:8001`, choose a saved profile, paste text, and generate audio. Each catalog voice owns its model and supported languages; profiles hold a voice selection and reading settings. Use **Edit** to preview settings and **Save As…** to create another profile. Previews and generation make paid provider requests.
+
+For existing cloned voices or creating a new one, see [Creating and reusing cloned voices](docs/cloned-voices.md). Provider settings, storage paths, and pricing notes are in [Configuration](docs/configuration.md).
 
 ## Local Development
 
-Run with reload while editing:
+Run with deterministic fake providers and isolated development storage:
 
 ```bash
-TTS_PROVIDER=fake .venv/bin/uvicorn tts_app.api:create_app \
+env -u TTS_DB_PATH -u TTS_AUDIO_DIR -u TTS_IMAGE_DIR \
+TTS_DATA_DIR=/tmp/readvox-dev TTS_PROVIDER=fake OCR_PROVIDER=fake \
+.venv/bin/uvicorn tts_app.api:create_app \
   --factory \
   --reload \
   --reload-dir src \
@@ -93,6 +91,8 @@ TTS_PROVIDER=fake .venv/bin/uvicorn tts_app.api:create_app \
   --port 8001 \
   --log-level info
 ```
+
+Fake providers make no network calls and produce deterministic test output, not playable speech. Fresh storage has no catalog or profiles, so the profile editor starts empty. Automated tests supply their own fake catalog fixtures; use the Qwen setup above for an interactive speech workflow.
 
 Run checks before claiming work is complete:
 
