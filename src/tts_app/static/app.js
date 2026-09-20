@@ -1,4 +1,5 @@
-import { createHistory } from "./history.js?v=history-profiles-1";
+import { createGenerationUpdates } from "./generation-updates.js?v=generation-recovery-1";
+import { createHistory } from "./history.js?v=generation-recovery-1";
 import {
   audioPlayer,
   autoplayInput,
@@ -49,6 +50,15 @@ import {
 } from "./profile-selection.js?v=voice-language-2";
 import { createProfileEditor } from "./profile-editor.js?v=voice-language-2";
 
+const generationUpdates = createGenerationUpdates({
+  refresh: async (generationId) => {
+    const loaded = await loadGenerationDetail(generationId);
+    return loaded ? state.currentDetail?.generation.status : null;
+  },
+  onMessage: handleEventMessage,
+  onDisconnect: handleEventSourceError,
+  onSource: (source) => { state.eventSource = source; },
+});
 const history = createHistory({ historyList, historySearch, playerStatus, state, openGeneration, resetPlaybackState });
 const { loadHistory } = history;
 
@@ -256,12 +266,11 @@ async function openGeneration(generationId, options = {}) {
     state.autoplay = Boolean(settings.autoplay);
     state.continuousPlayback = state.autoplay;
     showView("playback-view");
-    if (settings.subscribe) {
-      subscribeToGeneration(generationId);
-    } else {
-      closeEventSource();
-    }
+    closeEventSource();
     const loaded = await loadGenerationDetail(generationId);
+    if (loaded && ["queued", "running"].includes(state.currentDetail.generation.status)) {
+      subscribeToGeneration(generationId);
+    }
     if (loaded) {
       recordPlaybackTelemetry("generation_opened", {
         platform: telemetryPlatform(),
@@ -275,11 +284,13 @@ async function openGeneration(generationId, options = {}) {
 }
 
 async function loadGenerationDetail(generationId) {
+  const refreshing = state.currentDetail?.generation.id === generationId;
   try {
     const response = await fetch(`/api/generations/${generationId}`);
     if (!response.ok) {
       if (state.currentGenerationId === generationId) {
-        resetPlaybackState("Unable to load generation");
+        if (refreshing && response.status !== 404) handleEventSourceError();
+        else resetPlaybackState("Unable to load generation");
       }
       return null;
     }
@@ -287,8 +298,9 @@ async function loadGenerationDetail(generationId) {
     if (state.currentGenerationId !== generationId) {
       return null;
     }
+    const opening = state.currentDetail === null;
     state.currentDetail = detail;
-    state.currentSegmentIndex = chooseResumeSegmentIndex({
+    if (opening) state.currentSegmentIndex = chooseResumeSegmentIndex({
       lastSegmentIndex: detail.generation.last_segment_index,
       totalSegments: detail.text_segments.length,
     });
@@ -296,17 +308,15 @@ async function loadGenerationDetail(generationId) {
     return state.currentGenerationId === generationId;
   } catch {
     if (state.currentGenerationId === generationId) {
-      resetPlaybackState("Unable to load generation");
+      if (refreshing) handleEventSourceError();
+      else resetPlaybackState("Unable to load generation");
     }
     return null;
   }
 }
 
 function closeEventSource() {
-  if (state.eventSource) {
-    state.eventSource.close();
-    state.eventSource = null;
-  }
+  generationUpdates.stop();
 }
 
 function resetPlaybackState(message) {
@@ -334,11 +344,7 @@ function stopPlayback() {
 
 function handleEventSourceError() {
   recordPlaybackTelemetry("event_source_error");
-  playerStatus.textContent = "Live updates disconnected";
-  if (state.eventSource) {
-    state.eventSource.close();
-    state.eventSource = null;
-  }
+  playerStatus.textContent = "Live updates disconnected; generation continues in the background. Reconnecting...";
 }
 
 function handleEventMessage(message, generationId) {
@@ -365,26 +371,16 @@ function handleEventMessage(message, generationId) {
     });
   }
   if (event.type === "generation_failed") {
-    playerStatus.textContent = event.error || "Generation failed";
+    loadGenerationDetail(generationId).then(() => {
+      if (state.currentGenerationId === generationId && state.currentDetail?.generation.status === "failed") {
+        playerStatus.textContent = event.error || "Generation failed";
+      }
+    });
   }
 }
 
 function subscribeToGeneration(generationId) {
-  closeEventSource();
-
-  try {
-    state.eventSource = new EventSource(`/api/generations/${generationId}/events`);
-  } catch {
-    playerStatus.textContent = "Live updates unavailable";
-    return;
-  }
-
-  state.eventSource.onmessage = (message) => {
-    handleEventMessage(message, generationId);
-  };
-  state.eventSource.onerror = () => {
-    handleEventSourceError();
-  };
+  generationUpdates.start(generationId);
 }
 
 function renderPlayback() {

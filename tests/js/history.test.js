@@ -136,3 +136,30 @@ describe("History failure indicators", () => {
     expect(historyList.querySelector(".history-error")).toBeNull();
   });
 });
+
+
+describe('generation recovery', () => {
+  it('shows generated progress separately and resumes the existing generation', async () => {
+    state.generations = [row({status:'failed', can_resume:true, total_segments:10, completed_segments:3})];
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ok:true,json:async () => ({generation_id:7})}));
+    history.renderHistory();
+    expect(historyList.textContent).toContain('3 / 10 segments');
+    const button = historyList.querySelector('[data-action="resume"]');
+    expect(button).not.toBeNull();
+    await history.resumeGeneration(7, button);
+    expect(fetch).toHaveBeenCalledWith('/api/generations/7/resume', {method:'POST'});
+    expect(openGeneration).toHaveBeenCalledWith(7, {subscribe:true, autoplay:false});
+  });
+
+  it('displays resume failures without discarding partial playback', async () => {
+    state.generations = [row({status:'failed',can_resume:true})];
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ok:false,json:async () => ({detail:'Already running'})}));
+    history.renderHistory();
+    const button = historyList.querySelector('[data-action="resume"]');
+    await history.resumeGeneration(7, button);
+    expect(playerStatus.textContent).toContain('Already running');
+    expect(historyList.querySelector('[role="status"]').textContent).toContain('Already running');
+    expect(button.disabled).toBe(false);
+    expect(resetPlaybackState).not.toHaveBeenCalled();
+  });
+});

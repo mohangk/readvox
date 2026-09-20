@@ -160,3 +160,9 @@ Before updating an existing deployment, wait until `/api/generations` has no `qu
 Existing catalog voices and profiles are used directly from SQLite. To install accepted version-1 clone bundles on a fresh database or create new clones, follow [Creating and reusing cloned voices](../docs/cloned-voices.md). Installation is offline and creates catalog entries, not profiles. Choose an installed clone in **Edit**, set reading settings and use **Save As…**. Retain original source bundles for repeat installs; conflicting definitions or provenance are rejected.
 
 For the single paid development canary, see [Live provider integration](../docs/configuration.md#live-provider-integration).
+
+### Background jobs and interrupted generations
+
+Run one Uvicorn worker/process per Readvox database. Jobs belong to the server, so closing browser tabs does not stop synthesis. Reopening an active History entry reconnects progress. Deploy/reload after active work completes when possible: a shutdown cancels owned jobs, and startup marks abandoned queued/running entries failed with an interruption message. Use **Resume** in History to continue with the original saved settings and retained completed audio. Startup never automatically makes paid synthesis requests.
+
+Qwen wait limits are configured in `envrc.local.example`; failures include safe stage/request/session diagnostics for provider support. Listing cloud voices (`scripts/voices.py list`) checks enrollment existence, not synthesis health.

@@ -10,6 +10,7 @@ SRC_DIR = Path("src/tts_app")
 PYPROJECT = Path("pyproject.toml")
 APP_JS_FILES = (
     "app.js",
+    "generation-updates.js",
     "history.js",
     "ocr.js",
     "playback.js",
@@ -58,7 +59,7 @@ def test_instruction_voice_sample_page_has_profile_controls():
     assert 'id="instruction-sample"' in html
     assert 'id="clear-instruction-samples"' in html
     assert "long-form audiobook" in html
-    assert 'src="/static/app.js?v=history-profiles-1"' in html
+    assert 'src="/static/app.js?v=generation-recovery-1"' in html
 
 
 def test_instruction_voice_sample_javascript_posts_to_instruction_endpoint_without_telemetry():
@@ -131,7 +132,7 @@ def test_frontend_static_asset_version_bumped_for_playback_progress():
     sources = [html, *((STATIC_DIR / filename).read_text(encoding="utf-8") for filename in JS_FILES)]
 
     assert 'href="/static/styles.css?v=history-profiles-1"' in html
-    assert 'src="/static/app.js?v=history-profiles-1"' in html
+    assert 'src="/static/app.js?v=generation-recovery-1"' in html
     assert "playback-progress-1" in (STATIC_DIR / "app.js").read_text(encoding="utf-8")
     assert './ocr.js?v=voice-language-2' in (STATIC_DIR / 'app.js').read_text(encoding='utf-8')
     assert "playback-progress-1" in (STATIC_DIR / "voice-controls.js").read_text(encoding="utf-8")
@@ -608,7 +609,8 @@ def test_frontend_history_renders_url_metadata_and_delete_controls():
     assert "<details" in renderer
     assert "Voice" in renderer
     assert "Speed" in renderer
-    assert "Progress" in renderer
+    assert "Listening progress" in renderer
+    assert "Generated" in renderer
     assert "data-action=\"delete\"" in renderer
 
 
@@ -643,8 +645,8 @@ def test_frontend_playback_updates_progress():
 def test_frontend_event_source_handles_errors():
     js = frontend_js()
 
-    assert "state.eventSource.onerror" in js
-    assert "state.eventSource.close()" in js
+    assert "source.onerror" in js
+    assert "source.close()" in js
 
 
 def test_frontend_fetch_paths_have_error_handling():

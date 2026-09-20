@@ -61,3 +61,37 @@ it('keeps OCR draft and busy constraints while profile selection changes',async(
   expect(state.currentOcrDraftId).toBe(42);expect(state.currentOcrDraft.language).toBe('zh');
   expect(document.querySelector('.ocr-combined-text').value).toBe('Reviewed 中文');
 });
+
+it('keeps active generation and partial playback through a failed background refresh', async () => {
+  const sources=[];
+  window.HTMLElement.prototype.scrollIntoView=vi.fn();
+  vi.stubGlobal('EventSource', class {
+    constructor() { sources.push(this); }
+    close=vi.fn();
+  });
+  const {state}=await mount([profile]);
+  const detail={generation:{id:7,title:'Background article',status:'running',last_segment_index:0},text_segments:[{segment_index:0,text:'Saved text'}],audio_segments:[]};
+  const originalFetch=globalThis.fetch;
+  let offline=false;
+  vi.stubGlobal('fetch',vi.fn(async(url,init)=>{
+    if(url==='/api/generations') return {ok:true,json:async()=>[detail.generation]};
+    if(url==='/api/generations/7') {
+      if(offline) throw new Error('offline');
+      return {ok:true,json:async()=>detail};
+    }
+    return originalFetch(url,init);
+  }));
+  document.querySelector('[data-view="history-view"]').click();
+  await vi.waitFor(()=>expect(document.querySelector('[data-action="open"]')).not.toBeNull());
+  document.querySelector('[data-action="open"]').click();
+  await vi.waitFor(()=>expect(sources).toHaveLength(1));
+  offline=true;
+  await sources[0].onopen();
+  expect(state.currentGenerationId).toBe(7);
+  expect(state.currentDetail.generation.status).toBe('running');
+  expect(sources[0].close).not.toHaveBeenCalled();
+  offline=false;
+  detail.generation.status='completed';
+  await sources[0].onopen();
+  expect(sources[0].close).toHaveBeenCalled();
+});

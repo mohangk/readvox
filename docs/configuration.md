@@ -122,4 +122,14 @@ The historical flash-model prices above do not establish instruction-model prici
 
 `QWEN_SETUP_TIMEOUT_SECONDS` (default `15`) bounds connection, setup acknowledgements and each text/control send. `QWEN_AUDIO_TIMEOUT_SECONDS` (default `60`) bounds waiting for the first or next audio chunk and final completion; non-audio events do not reset it. `QWEN_SEGMENT_TIMEOUT_SECONDS` (default `180`) bounds the whole synthesis request. Values must be finite and positive. WebSocket cleanup is limited to five seconds.
 
-Readvox waits for Qwen's session creation and settings acknowledgement before submitting text. Failures include the stage, elapsed time and available provider request/session IDs; submitted text and credentials are redacted. These limits prevent indefinite waits, but do not guarantee provider availability. Successful synthesis is retained even if closing the completed connection fails.
+Readvox waits for Qwen's session creation and settings acknowledgement before submitting text. Failures include the stage, elapsed time and available provider request/session IDs; free-form provider messages, submitted text and credentials are excluded. These limits prevent indefinite waits, but do not guarantee provider availability. Successful synthesis is retained even if closing the completed connection fails.
+
+## Background generation and Resume
+
+Once a submission returns a generation ID, synthesis belongs to the server. You can close the browser or switch devices; reopen the entry in History to see saved audio and reconnect progress updates. The server machine and Readvox service must remain running. A disconnected progress stream does not cancel synthesis.
+
+For a provider failure, History shows the error, generated segment count and **Resume** when the original synthesis settings are available. Resume continues the same generation from unfinished segments, preserving completed audio and listening position. It uses the original text and voice settings even if a profile was edited or deleted. Repeated Resume clicks cannot start overlapping jobs for that generation.
+
+On server shutdown/restart, unfinished jobs become failed with an interruption message and can be resumed manually. Readvox does not automatically retry or submit paid work after restart. Deleting an active generation first stops its task. If completed audio is missing/damaged or historical settings are incomplete, recovery refuses to guess or overwrite; retain the entry and create a new generation or restore its files from backup.
+
+Use a single worker/process per database. Opening the browser is not required to keep an already-submitted task running, but the server does not run while the machine is asleep or powered off.
