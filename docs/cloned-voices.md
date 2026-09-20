@@ -108,17 +108,30 @@ Open **Edit** or `/voice-sample`, choose a language and voice, set reading setti
 
 The configured provider must support the selected catalog voice. Each generation snapshots its model, voice and profile settings, so later edits do not change History. Profile deletion leaves the enrollment, references and generated audio intact. For built-in catalog population, see [Configuration](configuration.md).
 
+## List cloud voices and diagnose failures
+
+To check which Qwen cloned voices exist in the configured account and region, load the credentials above and run:
+
+```bash
+.venv/bin/python scripts/voices.py list
+.venv/bin/python scripts/voices.py list --page-index 1
+```
+
+This read-only command needs no manifest and prints the cloud response as JSON, including voice IDs, bound models and pagination metadata. Pages start at zero with up to 100 voices each; use `--page-index` for subsequent pages. It does not create voices, synthesize audio, or change local files. `--check` validates the command without contacting Qwen. A listed voice exists, but a synthesis request is still needed to check that it can generate audio. `inspect --manifest` instead reads a local workshop record offline.
+
+If synthesis fails, first check that the saved voice ID appears in this list with the expected target model. Compare a short request using that same voice/model pair with a supported built-in voice in the same account and region. Keep the request time, provider error code, request/session IDs and whether any audio arrived. A `SERVER_ERROR` does not by itself mean an enrollment was deleted or needs recreating. Preserve existing enrollments and partial generation audio while investigating.
+
 ## Resume interrupted work
 
 Candidates and comparisons accept `--resume <manifest.json>` with the original inputs; completed audio is retained and only remaining requests run. Inspect an uncertain enrollment locally, then explicitly look it up instead of creating another:
 
 ```bash
 .venv/bin/python scripts/voices.py inspect --manifest data/voice-workshop/my-narrator-v1/manifest.json
-.venv/bin/python scripts/voices.py enroll --resume data/voice-workshop/my-narrator-v1/manifest.json --lookup --page-index 0
+.venv/bin/python scripts/voices.py list
 .venv/bin/python scripts/voices.py enroll --resume data/voice-workshop/my-narrator-v1/manifest.json --adopt-voice-id <recovered-voice-id> --page-index 0
 ```
 
-Lookup sends `action=list` with `page_index` and `page_size=100`. Check subsequent pages as needed and match the saved preferred name and creation details. Adoption checks the returned voice's model, region and credentials before saving it. After confirming a rotated key belongs to the same account, use `--acknowledge-credential-change`. Normal inspection, installation and app startup never contact the enrollment API.
+Listing sends `action=list` with `page_index` and `page_size=100`. The older `enroll --resume <manifest.json> --lookup` form remains available. Check subsequent pages as needed and match the saved preferred name and creation details. Adoption checks the returned voice's model, region and credentials before saving it. After confirming a rotated key belongs to the same account, use `--acknowledge-credential-change`. Normal inspection, installation and app startup never contact the enrollment API.
 
 ## Backups
 

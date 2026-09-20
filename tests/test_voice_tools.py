@@ -1,12 +1,61 @@
+import asyncio
 import json
 import wave
 
+import httpx
 import pytest
 
 from tts_app.providers.base import AudioChunk, ProviderError
-from tts_app.providers.qwen_enrollment import CLONE_MODEL
+from tts_app.providers.qwen_enrollment import CLONE_MODEL, QwenEnrollment
 from tts_app.voice_tools.cli import main
 from tts_app.voice_tools.manifest import load_manifest
+
+
+@pytest.mark.parametrize('page,voices,status', [
+    (0, [{'voice': 'qwen-tts-vc-example', 'target_model': CLONE_MODEL}], 200),
+    (2, [], 200),
+    (0, [], 503),
+])
+def test_list_cloud_voices_without_manifest(tmp_path, monkeypatch, capsys, page, voices, status):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv('TTS_DATA_DIR', str(tmp_path / 'data'))
+    output = {'voice_list': voices, 'page_index': page, 'page_size': 100}
+
+    def respond(request):
+        assert json.loads(request.content) == {
+            'model': 'qwen-voice-enrollment',
+            'input': {'action': 'list', 'page_index': page, 'page_size': 100},
+        }
+        return httpx.Response(status, json={'output': output})
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(respond))
+    adapter = QwenEnrollment('test-key', 'https://dashscope-intl.aliyuncs.com/api/v1/services/audio/tts/customization', client=client)
+    try:
+        result = main(['list', *(['--page-index', str(page)] if page else [])], enrollment=adapter)
+    finally:
+        asyncio.run(client.aclose())
+    printed = capsys.readouterr().out
+    if status == 200:
+        assert result == 0
+        assert json.loads(printed) == output
+    else:
+        assert result == 1
+        assert 'HTTP 503' in printed
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize('args,expected', [(['--check'], 0), (['--page-index', '-1'], 1)])
+def test_list_check_and_invalid_page_do_not_contact_provider(tmp_path, monkeypatch, capsys, args, expected):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv('TTS_DATA_DIR', str(tmp_path / 'data'))
+
+    class NoRequests:
+        async def lookup(self, **kwargs):
+            pytest.fail('Offline checks must not contact Qwen')
+
+    assert main(['list', *args], enrollment=NoRequests()) == expected
+    assert ('0 writes' if expected == 0 else 'page index') in capsys.readouterr().out
+    assert list(tmp_path.iterdir()) == []
 
 
 class Speech:

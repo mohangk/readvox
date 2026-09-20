@@ -17,6 +17,9 @@ from tts_app.voice_tools.manifest import load_manifest
 def parser():
     root = argparse.ArgumentParser(description='Readvox private voice workshop. Enrollment and synthesis commands are paid; --check is offline.')
     commands = root.add_subparsers(dest='command', required=True)
+    listing = commands.add_parser('list', help='List Qwen cloud cloned voices without a manifest (read-only)')
+    listing.add_argument('--page-index', type=int, default=0, help='Zero-based page, 100 voices per page')
+    listing.add_argument('--check', action='store_true')
     candidate = commands.add_parser('candidates', help='Generate reference candidates')
     candidate.add_argument('--text', type=Path, required=True)
     candidate.add_argument('--voices', nargs='+', required=True)
@@ -86,18 +89,31 @@ async def dispatch(args, *, provider=None, enrollment=None):
         print(json.dumps(data, ensure_ascii=False, indent=2))
         return 0
     settings = load_settings()
-    if args.command == 'enroll':
-        if args.lookup and args.adopt_voice_id:
+    if args.command in {'enroll', 'list'}:
+        if args.command == 'list':
+            if args.page_index < 0:
+                raise ValueError('Invalid page index: must be nonnegative')
+            if args.check:
+                print('1 read-only enrollment lookup; 0 creates; 0 writes')
+                return 0
+        elif args.lookup and args.adopt_voice_id:
             raise ValueError('Choose lookup or adoption, separately')
         if enrollment is not None:
-            return await enroll.run(args, enrollment=enrollment)
+            return await run_enrollment_command(args, enrollment)
         host = urlsplit(settings.qwen_realtime_url).hostname
         async with httpx.AsyncClient(timeout=120) as client:
-            adapter = QwenEnrollment(settings.qwen_api_key, f'https://{host}/api/v1/services/audio/tts/customization', client=client, target_model=args.model or 'qwen3-tts-vc-realtime-2026-01-15')
-            return await enroll.run(args, enrollment=adapter)
+            adapter = QwenEnrollment(settings.qwen_api_key, f'https://{host}/api/v1/services/audio/tts/customization', client=client, target_model=getattr(args, 'model', None) or 'qwen3-tts-vc-realtime-2026-01-15')
+            return await run_enrollment_command(args, adapter)
     if provider is None:
         provider = QwenTTSProvider(settings.qwen_api_key, settings.qwen_model, settings.qwen_realtime_url)
     return await {'candidates': candidates.run, 'compare': compare.run}[args.command](args, provider=provider)
+
+
+async def run_enrollment_command(args, enrollment):
+    if args.command == 'list':
+        print(json.dumps(await enrollment.lookup(page_index=args.page_index), ensure_ascii=False, indent=2))
+        return 0
+    return await enroll.run(args, enrollment=enrollment)
 
 
 def main(argv: list[str] | None = None, *, provider=None, enrollment=None) -> int:
