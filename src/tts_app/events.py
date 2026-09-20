@@ -10,6 +10,9 @@ class EventBroker:
         self._history: dict[int, list[dict[str, Any]]] = defaultdict(list)
         self._subscribers: dict[int, list[asyncio.Queue[dict[str, Any]]]] = defaultdict(list)
 
+    def clear_history(self, generation_id: int) -> None:
+        self._history.pop(generation_id, None)
+
     async def publish(self, generation_id: int, event: dict[str, Any]) -> None:
         self._history[generation_id].append(event)
         for queue in list(self._subscribers[generation_id]):

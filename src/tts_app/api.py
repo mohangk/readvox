@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import shutil
+from contextlib import asynccontextmanager
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,8 @@ from tts_app.config import Settings, load_settings
 from tts_app.events import EventBroker
 from tts_app.extractor import ExtractionError, fetch_and_extract
 from tts_app.generation import GenerationService
+from tts_app.generation_jobs import GenerationJobs, GenerationConflict
+from tts_app.routes.generation_recovery import create_generation_recovery_router, add_recovery_status
 from tts_app.generation_settings import GenerationSynthesisRequest, resolve_generation_settings
 from tts_app.ocr_providers.registry import get_ocr_provider
 from tts_app.providers.options import SelectOption
@@ -107,7 +110,20 @@ def create_app(settings: Settings | None = None, run_background_inline: bool = F
         audio_dir=active_settings.audio_dir,
         segment_max_chars=active_settings.segment_max_chars,
     )
-    app = FastAPI(title="Readvox")
+    jobs = GenerationJobs(service)
+    service.jobs = jobs
+
+    @asynccontextmanager
+    async def lifespan(app):
+        storage.interrupt_generations()
+        try:
+            yield
+        finally:
+            await jobs.shutdown()
+
+    app = FastAPI(title="Readvox", lifespan=lifespan)
+    app.state.jobs = jobs
+    app.include_router(create_generation_recovery_router(jobs, run_background_inline=run_background_inline))
     static_dir = Path(__file__).parent / "static"
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
     app.state.settings = active_settings
@@ -250,12 +266,14 @@ def create_app(settings: Settings | None = None, run_background_inline: bool = F
 
     @app.get("/api/generations")
     async def list_generations():
-        return storage.list_generations()
+        return [add_recovery_status(g, provider.name) for g in storage.list_generations()]
 
     @app.get("/api/generations/{generation_id}")
     async def get_generation(generation_id: int):
         try:
-            return storage.get_generation(generation_id)
+            detail = storage.get_generation(generation_id)
+            detail['generation'] = add_recovery_status(detail['generation'], provider.name)
+            return detail
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="generation not found") from exc
 
@@ -297,15 +315,18 @@ def create_app(settings: Settings | None = None, run_background_inline: bool = F
     @app.delete("/api/generations/{generation_id}", status_code=204)
     async def delete_generation(generation_id: int):
         try:
-            storage.get_generation(generation_id)
-            linked_ocr_draft = storage.get_ocr_draft_for_generation(generation_id)
-            storage.delete_generation(generation_id)
+            async with jobs.deleting(generation_id):
+                storage.get_generation(generation_id)
+                linked_ocr_draft = storage.get_ocr_draft_for_generation(generation_id)
+                storage.delete_generation(generation_id)
+                shutil.rmtree(active_settings.audio_dir / str(generation_id), ignore_errors=True)
+                if linked_ocr_draft is not None:
+                    shutil.rmtree(active_settings.image_dir / str(linked_ocr_draft["id"]), ignore_errors=True)
+                    storage.force_delete_ocr_draft(linked_ocr_draft["id"])
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="generation not found") from exc
-        shutil.rmtree(active_settings.audio_dir / str(generation_id), ignore_errors=True)
-        if linked_ocr_draft is not None:
-            shutil.rmtree(active_settings.image_dir / str(linked_ocr_draft["id"]), ignore_errors=True)
-            storage.force_delete_ocr_draft(linked_ocr_draft["id"])
+        except GenerationConflict as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         logger.info("generation_deleted generation_id=%s", generation_id)
         return Response(status_code=204)
 

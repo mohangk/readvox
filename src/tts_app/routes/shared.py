@@ -15,6 +15,6 @@ async def schedule_generation(
     run_background_inline: bool,
 ) -> None:
     if run_background_inline:
-        await service.run_generation(generation_id, voice, speed, language)
+        await service.jobs.start(generation_id, voice=voice, speed=speed, language=language, inline=True)
         return
-    background_tasks.add_task(service.run_generation, generation_id, voice, speed, language)
+    await service.jobs.start(generation_id, voice=voice, speed=speed, language=language)

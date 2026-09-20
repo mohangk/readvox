@@ -119,7 +119,10 @@ from tts_app.voice_storage import VoiceStorageMixin
 from tts_app.voice_schema import ensure_current_voice_schema
 
 
-class Storage(ProfileStorageMixin, VoiceStorageMixin):
+from tts_app.generation_storage import GenerationRecoveryStorageMixin
+
+
+class Storage(ProfileStorageMixin, VoiceStorageMixin, GenerationRecoveryStorageMixin):
     def __init__(self, db_path: Path):
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -791,7 +794,9 @@ class Storage(ProfileStorageMixin, VoiceStorageMixin):
                 """
                 SELECT id, source_type, title, url, substr(full_text, 1, 180) AS text_preview,
                        provider, voice, settings_json, status, error, last_segment_index,
-                       progress_percent, created_at, updated_at
+                       progress_percent, created_at, updated_at,
+                       (SELECT count(*) FROM text_segments t WHERE t.generation_id=generations.id) AS total_segments,
+                       (SELECT count(*) FROM audio_segments a WHERE a.generation_id=generations.id AND a.status='completed') AS completed_segments
                 FROM generations
                 ORDER BY datetime(created_at) DESC, id DESC
                 """
@@ -823,6 +828,8 @@ class Storage(ProfileStorageMixin, VoiceStorageMixin):
 
         generation_dict = dict(generation)
         generation_dict["settings"] = json.loads(generation_dict.pop("settings_json"))
+        generation_dict['total_segments'] = len(text_segments)
+        generation_dict['completed_segments'] = sum(a['status'] == 'completed' for a in audio_segments)
         return {
             "generation": generation_dict,
             "text_segments": [dict(row) for row in text_segments],

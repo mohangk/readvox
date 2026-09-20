@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
@@ -90,7 +91,10 @@ class GenerationService:
         await self.broker.publish(generation_id, {"type": "generation_started", "generation_id": generation_id})
 
         try:
+            self.validate_completed_audio(detail)
             for text_segment in detail["text_segments"]:
+                if text_segment['status'] == 'completed':
+                    continue
                 await self._run_segment(
                     generation_id,
                     text_segment,
@@ -141,11 +145,20 @@ class GenerationService:
             absolute_path = self.audio_dir / str(generation_id) / filename
             relative_path = absolute_path.relative_to(self.audio_dir.parent)
             absolute_path.parent.mkdir(parents=True, exist_ok=True)
-            absolute_path.write_bytes(data)
+            if not data:
+                raise ValueError("Provider returned no audio")
+            temporary_path = absolute_path.with_suffix(absolute_path.suffix + '.tmp')
+            try:
+                with temporary_path.open('wb') as output:
+                    output.write(data)
+                    output.flush()
+                    os.fsync(output.fileno())
+                os.replace(temporary_path, absolute_path)
+            finally:
+                temporary_path.unlink(missing_ok=True)
 
             duration_ms = estimate_audio_duration_ms(absolute_path, mime_type)
-            self.storage.update_text_segment_status(int(text_segment["id"]), "completed")
-            audio_id = self.storage.record_audio_segment(
+            audio_id = self.storage.complete_audio_segment(
                 generation_id=generation_id,
                 text_segment_id=int(text_segment["id"]),
                 segment_index=segment_index,
@@ -153,8 +166,6 @@ class GenerationService:
                 mime_type=mime_type,
                 duration_ms=duration_ms,
                 byte_size=len(data),
-                status="completed",
-                error=None,
             )
             self._ensure_continuous_audio(generation_id, segment_index)
             logger.info(
@@ -188,6 +199,18 @@ class GenerationService:
                 exc,
             )
             raise
+
+    def validate_completed_audio(self, detail):
+        audio_by_index = {a['segment_index']: a for a in detail['audio_segments']}
+        for segment in detail['text_segments']:
+            audio = audio_by_index.get(segment['segment_index'])
+            if segment['status'] != 'completed' and audio is None:
+                continue
+            if segment['status'] != 'completed' or audio is None or audio['status'] != 'completed':
+                raise ValueError('Inconsistent completed audio checkpoint; repair is required before Resume.')
+            path = self.audio_dir.parent / audio['file_path']
+            if not path.is_file() or path.stat().st_size != audio['byte_size'] or audio['byte_size'] <= 0:
+                raise ValueError('Missing or damaged completed audio; repair is required before Resume.')
 
     def _ensure_continuous_audio(self, generation_id: int, segment_index: int | None = None) -> None:
         try:
