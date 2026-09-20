@@ -112,7 +112,14 @@ def _playback_telemetry_optional_int(value: Any, field_name: str) -> int | None:
     return value
 
 
-class Storage:
+from tts_app.profile_storage import ProfileStorageMixin
+
+
+from tts_app.voice_storage import VoiceStorageMixin
+from tts_app.voice_schema import ensure_current_voice_schema
+
+
+class Storage(ProfileStorageMixin, VoiceStorageMixin):
     def __init__(self, db_path: Path):
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -134,6 +141,9 @@ class Storage:
 
     def init_schema(self) -> None:
         with self.connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            ensure_current_voice_schema(conn)
+            conn.commit()
             conn.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS generations (

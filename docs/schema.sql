@@ -113,3 +113,39 @@ CREATE TABLE ocr_draft_images (
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(ocr_draft_id, position)
 );
+
+CREATE TABLE voices (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    key TEXT NOT NULL UNIQUE,
+    provider TEXT NOT NULL,
+    provider_voice_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK(kind IN ('builtin', 'cloned')),
+    available INTEGER NOT NULL CHECK(available IN (0, 1)),
+    model TEXT NOT NULL CHECK(length(trim(model)) > 0),
+    languages_json TEXT NOT NULL,
+    supports_instructions INTEGER NOT NULL CHECK(supports_instructions IN (0, 1)),
+    metadata_json TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(provider, provider_voice_id)
+);
+
+-- Version 1 marks completed default-profile seeding. Existing historical rows
+-- are retained but unused; this table no longer drives schema migrations.
+CREATE TABLE profile_migrations (version INTEGER PRIMARY KEY);
+
+CREATE TABLE voice_profiles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL CHECK(length(trim(name)) > 0),
+    name_key TEXT NOT NULL UNIQUE,
+    voice_id INTEGER NOT NULL REFERENCES voices(id) ON DELETE RESTRICT,
+    language TEXT NOT NULL CHECK(language IN ('en', 'zh')),
+    speed REAL NOT NULL CHECK(speed BETWEEN 0.5 AND 2.0),
+    instructions TEXT NOT NULL,
+    preview_text TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_voice_profiles_voice_id ON voice_profiles(voice_id);

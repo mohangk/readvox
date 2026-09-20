@@ -1,5 +1,58 @@
 import { escapeHtml, formatSpeed, withButtonBusy } from "./utils.js?v=playback-progress-1";
 
+export function renderHistoryItems(generations, search = "") {
+  const query = search.trim().toLowerCase();
+  const rows = generations.filter((item) => {
+    const text = `${item.title} ${item.text_preview} ${item.url ?? ""} ${item.voice} ${item.settings?.profile_name ?? ""} ${item.settings?.speed ?? ""}`.toLowerCase();
+    return text.includes(query);
+  });
+
+  if (rows.length === 0) {
+    return '<div class="history-item">No generations found</div>';
+  }
+
+  return rows
+    .map((item) => {
+      const created = item.created_at ? new Date(`${item.created_at}Z`).toLocaleString() : "";
+      const speed = item.settings?.speed ?? 1;
+      const progress = Number(item.progress_percent || 0);
+      const urlMarkup = item.url
+        ? `<div class="history-item-url">${escapeHtml(item.url)}</div>`
+        : "";
+      const failed = item.status === "failed";
+      const failureMarkup = failed
+        ? '<div class="history-failure"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3 2 21h20Z"/><path d="M12 9v5m0 3v1"/></svg> Generation failed</div>'
+        : "";
+      const errorMarkup = item.error
+        ? `<div><dt>Error</dt><dd class="history-error">${escapeHtml(item.error)}</dd></div>`
+        : "";
+      return `
+        <article class="history-item${failed ? " history-item-failed" : ""}" data-generation-id="${item.id}">
+          <div class="history-item-title">${escapeHtml(item.title)}</div>
+          ${failureMarkup}
+          <div class="history-item-meta">${escapeHtml(item.status)} ${escapeHtml(created)}</div>
+          ${urlMarkup}
+          <div class="history-item-preview">${escapeHtml(item.text_preview)}</div>
+          <details class="history-details">
+            <summary>Details</summary>
+            <dl>
+              <div><dt>Voice</dt><dd>${escapeHtml(item.settings?.profile_name || item.voice)}</dd></div>
+              <div><dt>Speed</dt><dd>${escapeHtml(formatSpeed(speed))}</dd></div>
+              <div><dt>Provider</dt><dd>${escapeHtml(item.provider)}</dd></div>
+              <div><dt>Progress</dt><dd>${escapeHtml(progress)}%</dd></div>
+              ${errorMarkup}
+            </dl>
+          </details>
+          <div class="history-actions">
+            <button class="secondary-action compact-action" type="button" data-action="open" data-generation-id="${item.id}">Open</button>
+            <button class="danger-action compact-action" type="button" data-action="delete" data-generation-id="${item.id}">Delete</button>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
 export function createHistory({ historyList, historySearch, playerStatus, state, openGeneration, resetPlaybackState }) {
   async function loadHistory() {
     try {
@@ -16,57 +69,7 @@ export function createHistory({ historyList, historySearch, playerStatus, state,
   }
 
   function renderHistory() {
-    const query = historySearch.value.trim().toLowerCase();
-    const rows = state.generations.filter((item) => {
-      const text = `${item.title} ${item.text_preview} ${item.url ?? ""} ${item.voice} ${item.settings?.speed ?? ""}`.toLowerCase();
-      return text.includes(query);
-    });
-
-    if (rows.length === 0) {
-      historyList.innerHTML = '<div class="history-item">No generations found</div>';
-      return;
-    }
-
-    historyList.innerHTML = rows
-      .map((item) => {
-        const created = item.created_at ? new Date(`${item.created_at}Z`).toLocaleString() : "";
-        const speed = item.settings?.speed ?? 1;
-        const progress = Number(item.progress_percent || 0);
-        const urlMarkup = item.url
-          ? `<div class="history-item-url">${escapeHtml(item.url)}</div>`
-          : "";
-        const failed = item.status === "failed";
-        const failureMarkup = failed
-          ? '<div class="history-failure"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3 2 21h20Z"/><path d="M12 9v5m0 3v1"/></svg> Generation failed</div>'
-          : "";
-        const errorMarkup = item.error
-          ? `<div><dt>Error</dt><dd class="history-error">${escapeHtml(item.error)}</dd></div>`
-          : "";
-        return `
-          <article class="history-item${failed ? " history-item-failed" : ""}" data-generation-id="${item.id}">
-            <div class="history-item-title">${escapeHtml(item.title)}</div>
-            ${failureMarkup}
-            <div class="history-item-meta">${escapeHtml(item.status)} ${escapeHtml(created)}</div>
-            ${urlMarkup}
-            <div class="history-item-preview">${escapeHtml(item.text_preview)}</div>
-            <details class="history-details">
-              <summary>Details</summary>
-              <dl>
-                <div><dt>Voice</dt><dd>${escapeHtml(item.voice)}</dd></div>
-                <div><dt>Speed</dt><dd>${escapeHtml(formatSpeed(speed))}</dd></div>
-                <div><dt>Provider</dt><dd>${escapeHtml(item.provider)}</dd></div>
-                <div><dt>Progress</dt><dd>${escapeHtml(progress)}%</dd></div>
-                ${errorMarkup}
-              </dl>
-            </details>
-            <div class="history-actions">
-              <button class="secondary-action compact-action" type="button" data-action="open" data-generation-id="${item.id}">Open</button>
-              <button class="danger-action compact-action" type="button" data-action="delete" data-generation-id="${item.id}">Delete</button>
-            </div>
-          </article>
-        `;
-      })
-      .join("");
+    historyList.innerHTML = renderHistoryItems(state.generations, historySearch.value);
   }
 
   async function deleteGeneration(generationId, button = null) {

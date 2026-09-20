@@ -83,6 +83,16 @@ describe("History behavior", () => {
 });
 
 describe("History failure indicators", () => {
+  it("preserves friendly profile names and search on failed generations", () => {
+    state.generations = [row({ status: "failed", voice: "internal-voice-id", settings: { profile_name: "Neil Narrator", speed: 1.1 } })];
+    historySearch.value = "Neil Narrator";
+    history.renderHistory();
+    expect(historyList.querySelectorAll("article")).toHaveLength(1);
+    expect(historyList.querySelector(".history-details dd").textContent).toBe("Neil Narrator");
+    expect(historyList.querySelector(".history-failure").textContent).toContain("Generation failed");
+  });
+
+
   it("marks only failed generations with a prominent text and icon indicator", () => {
     state.generations = ["failed", "queued", "running", "completed"].map((status, id) => row({ id, status }));
     history.renderHistory();

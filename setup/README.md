@@ -19,7 +19,14 @@ cd /home/mohan/tts
 setup/setup-venv.sh
 ```
 
-Run the systemd setup script:
+Copy the environment example only if `.envrc.local` does not exist, set the API key and adjust `TTS_DATA_DIR` if needed:
+
+```bash
+cp setup/envrc.local.example .envrc.local
+chmod 0600 .envrc.local
+```
+
+Then [populate the built-in catalog](#populate-or-refresh-built-in-voices) and run the systemd setup script:
 
 ```bash
 setup/install-service.sh
@@ -46,7 +53,7 @@ Manual equivalent:
    chmod 0600 .envrc.local
    ```
 
-3. Install the unit file and enable the service:
+3. [Populate the built-in catalog](#populate-or-refresh-built-in-voices), then install the unit file and enable the service:
 
    ```bash
    sudo install -m 0644 setup/tts.service /etc/systemd/system/tts.service
@@ -78,6 +85,8 @@ sudo systemctl restart tts
 ## Day-to-day update flows
 
 ### Code edits
+
+Wait for active generations to finish and make a [backup](#backups-and-cloned-voices) before updating.
 
 ```bash
 cd /home/mohan/tts
@@ -129,3 +138,25 @@ ss -ltnp | grep :8001
 | Missing API key | Qwen generations fail with provider auth errors | Add `DASHSCOPE_API_KEY` to `.envrc.local`; restart |
 | Env file missing | Unit fails during startup | Copy `setup/envrc.local.example` to `.envrc.local`; restart |
 | Port 8001 already in use | Unit fails with address-in-use error | `ss -ltnp \| grep :8001`, stop the conflicting process, restart |
+
+## Populate or refresh built-in voices
+
+Load the deployment environment so the command uses the service's database:
+
+```bash
+set -a
+source .envrc.local
+set +a
+.venv/bin/python scripts/populate_voice_catalog.py --provider qwen --check
+.venv/bin/python scripts/populate_voice_catalog.py --provider qwen
+```
+
+Run before first use and when the reviewed Qwen catalog source changes. Population is offline and requires no credentials. Check mode leaves the database and sidecars unchanged; if an active connection prevents a safe snapshot, close that activity and rerun. The command reports changes and preserves existing IDs, profiles and clones. `--data-dir /tmp/readvox-catalog-demo` overrides storage paths for an isolated run. Refresh the editor after updates; catalog changes need no restart. Startup reads the catalog without repopulating it.
+
+## Backups and cloned voices
+
+Before updating an existing deployment, wait until `/api/generations` has no `queued` or `running` jobs. Keep the app idle while making a consistent SQLite backup using SQLite's backup API or `.backup`; copying only an active main database file can omit committed WAL data. Back up configured audio, images, `data/voices/` and complete private workshop runs with the database. Rollback of a schema change requires its matching database backup and code.
+
+Existing catalog voices and profiles are used directly from SQLite. To install accepted version-1 clone bundles on a fresh database or create new clones, follow [Creating and reusing cloned voices](../docs/cloned-voices.md). Installation is offline and creates catalog entries, not profiles. Choose an installed clone in **Edit**, set reading settings and use **Save As…**. Retain original source bundles for repeat installs; conflicting definitions or provenance are rejected.
+
+For the single paid development canary, see [Live provider integration](../docs/configuration.md#live-provider-integration).

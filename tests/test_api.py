@@ -4,7 +4,6 @@ import json
 import logging
 from collections.abc import AsyncIterator
 from dataclasses import replace
-from types import SimpleNamespace
 
 import anyio
 from fastapi.testclient import TestClient
@@ -12,17 +11,16 @@ from fastapi.testclient import TestClient
 from tts_app.api import create_app
 from tts_app.extractor import ExtractedText
 from tts_app.providers.base import AudioChunk, ProviderError, TTSOptions
-from tts_app.providers.options import QWEN_INSTRUCTION_SAMPLE_CAPABILITIES, SelectOption
+from tts_app.providers.options import SelectOption
 from tts_app.storage import Storage
 from tts_app.voice_samples import VoiceSampleCacheError
 
 
 class CapturingTTSProvider:
-    name = "capturing"
+    name = "fake"
     english_voices = (SelectOption("Capture English", "Capture English", language="en"),)
     chinese_voices = (SelectOption("Capture Chinese", "Capture Chinese", language="zh"),)
     speed_options = ()
-    instruction_sample_capabilities = QWEN_INSTRUCTION_SAMPLE_CAPABILITIES
 
     def __init__(self):
         self.calls: list[tuple[str, TTSOptions]] = []
@@ -242,72 +240,18 @@ def test_voice_sample_failure_does_not_cache_partial_file(test_settings, monkeyp
     assert not list(cache_dir.glob("*.tmp.*"))
 
 
-def test_instruction_voice_sample_options_only_offer_compatible_voices(test_settings):
+def test_instruction_voice_sample_options_offer_flat_catalog(test_settings):
     client = TestClient(create_app(test_settings, run_background_inline=True))
-
-    response = client.get("/api/voice-sample/options")
-
+    response = client.get('/api/voice-sample/options')
     assert response.status_code == 200
-    payload = response.json()
-    voices_by_model = payload.pop("voices_by_model", None)
-    assert payload == {
-        "default_language": "en",
-        "default_model": "qwen3-tts-instruct-flash-realtime",
-        "default_speed": 1.0,
-        "default_voice": "Kai",
-        "languages": [
-            {"label": "English", "value": "en"},
-            {"label": "Chinese", "value": "zh"},
-        ],
-        "models": [
-            {
-                "label": "Qwen3 TTS Instruct Flash Realtime",
-                "value": "qwen3-tts-instruct-flash-realtime",
-            },
-            {
-                "label": "Qwen3 TTS Instruct Flash Realtime 2026-01-22",
-                "value": "qwen3-tts-instruct-flash-realtime-2026-01-22",
-            },
-        ],
-        "speeds": [
-            {"label": "0.75x", "value": 0.75},
-            {"label": "0.9x", "value": 0.9},
-            {"label": "1x", "value": 1.0},
-            {"label": "1.1x", "value": 1.1},
-            {"label": "1.25x", "value": 1.25},
-            {"label": "1.5x", "value": 1.5},
-        ],
-        "voices": [
-            {"label": "Cherry - friendly natural woman", "value": "Cherry"},
-            {"label": "Serena - gentle young woman", "value": "Serena"},
-            {"label": "Ethan - warm energetic man", "value": "Ethan"},
-            {"label": "Chelsie - bright animated woman", "value": "Chelsie"},
-            {"label": "Momo - playful woman", "value": "Momo"},
-            {"label": "Vivian - confident woman", "value": "Vivian"},
-            {"label": "Moon - bold man", "value": "Moon"},
-            {"label": "Maia - gentle thoughtful woman", "value": "Maia"},
-            {"label": "Kai - soothing man", "value": "Kai"},
-            {"label": "Nofish - casual man", "value": "Nofish"},
-            {"label": "Bella - playful young woman", "value": "Bella"},
-            {"label": "Eldric Sage - calm wise elder", "value": "Eldric Sage"},
-            {"label": "Mia - soft gentle woman", "value": "Mia"},
-            {"label": "Mochi - quick-witted man", "value": "Mochi"},
-            {"label": "Bellona - powerful clear voice", "value": "Bellona"},
-            {"label": "Vincent - raspy heroic man", "value": "Vincent"},
-            {"label": "Bunny - playful young girl", "value": "Bunny"},
-            {"label": "Neil - precise professional man", "value": "Neil"},
-            {"label": "Elias - academic storyteller", "value": "Elias"},
-            {"label": "Arthur - earthy storyteller", "value": "Arthur"},
-            {"label": "Nini - soft sweet woman", "value": "Nini"},
-            {"label": "Seren - gentle soothing woman", "value": "Seren"},
-            {"label": "Pip - playful young boy", "value": "Pip"},
-            {"label": "Stella - expressive young woman", "value": "Stella"},
-        ],
-    }
-    assert voices_by_model == {
-        "qwen3-tts-instruct-flash-realtime": payload["voices"],
-        "qwen3-tts-instruct-flash-realtime-2026-01-22": payload["voices"],
-    }
+    options = response.json()
+    catalog = options['voice_catalog']
+    assert next(voice for voice in catalog if voice['id']==options['default_voice_id'])['available']
+    kai = next(voice for voice in catalog if voice['provider_voice_id']=='Kai')
+    assert kai['languages'] == ['en','zh'] and kai['supports_instructions'] is True
+    assert sum(voice['provider_voice_id']=='Kai' for voice in catalog) == 1
+    assert 'models' not in options and 'models' not in kai
+    assert options['languages'] == [{'value':'en','label':'English'},{'value':'zh','label':'Chinese'}]
 
 
 def test_instruction_voice_sample_returns_audio_without_creating_history(test_settings, monkeypatch):
@@ -373,7 +317,6 @@ def test_instruction_voice_sample_cache_key_includes_model_text_and_instructions
     monkeypatch.setattr("tts_app.api.get_provider", lambda settings: provider)
     client = TestClient(create_app(test_settings, run_background_inline=True))
     base_payload = {
-        "model": "qwen3-tts-instruct-flash-realtime",
         "voice": "Kai",
         "speed": 1.0,
         "language": "en",
@@ -383,9 +326,11 @@ def test_instruction_voice_sample_cache_key_includes_model_text_and_instructions
 
     first = client.post("/api/voice-sample/instruction", json=base_payload)
     repeated = client.post("/api/voice-sample/instruction", json=base_payload)
+    with client.app.state.storage.connection() as conn:
+        conn.execute("UPDATE voices SET model=? WHERE provider_voice_id='Kai'", ('qwen3-tts-instruct-flash-realtime-2026-01-22',))
     changed_model = client.post(
         "/api/voice-sample/instruction",
-        json={**base_payload, "model": "qwen3-tts-instruct-flash-realtime-2026-01-22"},
+        json=base_payload,
     )
     changed_text = client.post(
         "/api/voice-sample/instruction",
@@ -460,7 +405,7 @@ def test_instruction_voice_sample_rejects_unsupported_model(test_settings, monke
     response = client.post(
         "/api/voice-sample/instruction",
         json={
-            "model": "qwen3-tts-flash-realtime",
+            "model": "unsupported-model",
             "voice": "Kai",
             "speed": 1.0,
             "language": "en",
@@ -473,7 +418,7 @@ def test_instruction_voice_sample_rejects_unsupported_model(test_settings, monke
     assert response.json() == {
         "detail": {
             "code": "unsupported_model",
-            "message": "qwen3-tts-flash-realtime is not supported for instruction samples",
+            "message": "The explicit model conflicts with this voice’s catalog model",
         }
     }
     assert provider.calls == []
@@ -499,56 +444,25 @@ def test_instruction_voice_sample_rejects_voice_not_supported_by_model(test_sett
     assert response.status_code == 400
     assert response.json() == {
         "detail": {
-            "code": "unsupported_voice",
-            "message": "Jennifer is not supported by qwen3-tts-instruct-flash-realtime",
+            "code": "unsupported_model",
+            "message": "The explicit model conflicts with this voice’s catalog model",
         }
     }
     assert provider.calls == []
 
 
-def test_instruction_voice_sample_uses_provider_model_voice_capabilities(test_settings, monkeypatch):
+def test_instruction_voice_sample_reads_backend_catalog_changes(test_settings, monkeypatch):
     provider = CapturingTTSProvider()
-    provider.instruction_sample_capabilities = SimpleNamespace(
-        models=(
-            SimpleNamespace(
-                option=SelectOption("qwen3-tts-instruct-flash-realtime", "Provider model"),
-                voices=(SelectOption("Provider Voice", "Provider voice"),),
-            ),
-        ),
-        speeds=(SelectOption(1.0, "1x"),),
-        default_model="qwen3-tts-instruct-flash-realtime",
-        default_voice="Provider Voice",
-    )
-    monkeypatch.setattr("tts_app.api.get_provider", lambda settings: provider)
-    client = TestClient(create_app(test_settings, run_background_inline=True))
-
-    options_response = client.get("/api/voice-sample/options")
-    rejected = client.post(
-        "/api/voice-sample/instruction",
-        json={
-            "model": "qwen3-tts-instruct-flash-realtime",
-            "voice": "Kai",
-            "speed": 1.0,
-            "language": "en",
-            "sample_text": "Sample text.",
-            "instructions": "Calm narration.",
-        },
-    )
-
-    assert options_response.status_code == 200
-    assert options_response.json()["models"] == [
-        {"value": "qwen3-tts-instruct-flash-realtime", "label": "Provider model"}
-    ]
-    assert options_response.json()["voices"] == [
-        {"value": "Provider Voice", "label": "Provider voice"}
-    ]
-    assert options_response.json()["voices_by_model"] == {
-        "qwen3-tts-instruct-flash-realtime": [
-            {"value": "Provider Voice", "label": "Provider voice"}
-        ]
-    }
-    assert rejected.status_code == 400
-    assert rejected.json()["detail"]["code"] == "unsupported_voice"
+    monkeypatch.setattr('tts_app.api.get_provider', lambda settings: provider)
+    app = create_app(test_settings, run_background_inline=True)
+    client = TestClient(app)
+    with app.state.storage.connection() as conn:
+        conn.execute("UPDATE voices SET available=0 WHERE provider_voice_id='Kai'")
+    options = client.get('/api/voice-sample/options').json()
+    assert next(v for v in options['voice_catalog'] if v['provider_voice_id']=='Kai')['available'] is False
+    rejected = client.post('/api/voice-sample/instruction', json={
+        'voice':'Kai','language':'en','speed':1,'sample_text':'Sample text.','instructions':''})
+    assert rejected.status_code == 400 and rejected.json()['detail']['code'] == 'voice_unavailable'
     assert provider.calls == []
 
 

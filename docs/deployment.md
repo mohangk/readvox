@@ -12,37 +12,7 @@ The versioned systemd deployment files live in `setup/`:
 
 ## One-Time Install
 
-Prerequisite: repo cloned at `/home/mohan/tts`.
-
-```bash
-cd /home/mohan/tts
-setup/setup-venv.sh
-setup/install-service.sh
-```
-
-Manual equivalent:
-
-```bash
-python -m venv .venv
-.venv/bin/pip install -e ".[dev]"
-cp setup/envrc.local.example .envrc.local
-chmod 0600 .envrc.local
-sudo install -m 0644 setup/tts.service /etc/systemd/system/tts.service
-sudo systemctl daemon-reload
-sudo systemctl enable --now tts
-```
-
-Set the provider API key in `/home/mohan/tts/.envrc.local`:
-
-```bash
-DASHSCOPE_API_KEY=<your-key>
-```
-
-Restart after changing environment values:
-
-```bash
-sudo systemctl restart tts
-```
+Follow [setup/README.md](../setup/README.md#one-time-install) to create the virtual environment, configure the private `.envrc.local`, populate the Qwen catalog, and install the service. The service reads environment changes after `sudo systemctl restart tts`. Built-in catalog updates need only an editor refresh.
 
 ## Trust Boundary
 

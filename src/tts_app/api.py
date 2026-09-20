@@ -16,12 +16,15 @@ from tts_app.config import Settings, load_settings
 from tts_app.events import EventBroker
 from tts_app.extractor import ExtractionError, fetch_and_extract
 from tts_app.generation import GenerationService
+from tts_app.generation_settings import GenerationSynthesisRequest, resolve_generation_settings
 from tts_app.ocr_providers.registry import get_ocr_provider
 from tts_app.providers.options import SelectOption
+from tts_app.profile_defaults import default_profiles
 from tts_app.providers.registry import get_provider
 from tts_app.routes.ocr import create_ocr_router
 from tts_app.routes.playback import create_playback_router
 from tts_app.routes.shared import schedule_generation
+from tts_app.routes.voice_profiles import create_voice_profile_router, create_voice_catalog_router
 from tts_app.routes.voice_samples import create_voice_sample_router
 from tts_app.storage import PLAYBACK_TELEMETRY_EVENT_NAMES, Storage, validate_playback_telemetry_session_id
 from tts_app.voice_samples import VoiceSampleCache
@@ -29,21 +32,13 @@ from tts_app.voice_samples import VoiceSampleCache
 logger = logging.getLogger(__name__)
 
 
-class TextGenerationRequest(BaseModel):
+class TextGenerationRequest(GenerationSynthesisRequest):
     text: str = Field(min_length=1)
     title: str = "Manual text"
-    voice: str | None = None
-    speed: float = Field(default=1.0, ge=0.5, le=2.0)
-    language: str = "en"
-    autoplay: bool = True
 
 
-class UrlGenerationRequest(BaseModel):
+class UrlGenerationRequest(GenerationSynthesisRequest):
     url: str = Field(min_length=1)
-    voice: str | None = None
-    speed: float = Field(default=1.0, ge=0.5, le=2.0)
-    language: str = "en"
-    autoplay: bool = True
 
 
 class ProgressRequest(BaseModel):
@@ -91,10 +86,18 @@ TTS_LANGUAGES = {
 
 def create_app(settings: Settings | None = None, run_background_inline: bool = False) -> FastAPI:
     active_settings = settings or load_settings()
+    provider = get_provider(active_settings)
     storage = Storage(active_settings.db_path)
     storage.init_schema()
     broker = EventBroker()
-    provider = get_provider(active_settings)
+    voices = storage.list_voices(provider.name)
+    defaults = default_profiles(voices)
+    if defaults:
+        storage.initialize_voice_profiles(defaults)
+    for voice in voices:
+        reference = voice['metadata'].get('reference_path')
+        if reference and not (active_settings.data_dir / reference).is_file():
+            logger.warning('voice_reference_missing voice_key=%s', voice['key'])
     voice_sample_cache = VoiceSampleCache(active_settings, provider)
     ocr_provider = get_ocr_provider(active_settings)
     service = GenerationService(
@@ -113,7 +116,9 @@ def create_app(settings: Settings | None = None, run_background_inline: bool = F
     app.state.service = service
     app.state.ocr_provider = ocr_provider
     app.include_router(create_playback_router(settings=active_settings, storage=storage, service=service))
-    app.include_router(create_voice_sample_router(voice_sample_cache=voice_sample_cache))
+    app.include_router(create_voice_profile_router(storage, provider))
+    app.include_router(create_voice_catalog_router(storage))
+    app.include_router(create_voice_sample_router(voice_sample_cache=voice_sample_cache, storage=storage, provider=provider))
     app.include_router(
         create_ocr_router(
             settings=active_settings,
@@ -181,13 +186,13 @@ def create_app(settings: Settings | None = None, run_background_inline: bool = F
 
     @app.post("/api/generations/text")
     async def submit_text(payload: TextGenerationRequest, background_tasks: BackgroundTasks):
-        _validate_language(payload.language)
-        voice = payload.voice or _default_voice_for_language(active_settings, payload.language)
+        snapshot = resolve_generation_settings(payload, storage, active_settings, provider)
+        voice = snapshot["voice"]
         generation_id = await service.create_from_text(
             text=payload.text,
             title=payload.title,
             voice=voice,
-            settings={"autoplay": payload.autoplay, "speed": payload.speed, "language": payload.language},
+            settings=snapshot,
         )
         logger.info(
             "text_generation_submitted generation_id=%s voice=%s speed=%s text_chars=%s",
@@ -209,8 +214,8 @@ def create_app(settings: Settings | None = None, run_background_inline: bool = F
 
     @app.post("/api/generations/url")
     async def submit_url(payload: UrlGenerationRequest, background_tasks: BackgroundTasks):
-        _validate_language(payload.language)
-        voice = payload.voice or _default_voice_for_language(active_settings, payload.language)
+        snapshot = resolve_generation_settings(payload, storage, active_settings, provider)
+        voice = snapshot["voice"]
         try:
             extracted = await fetch_and_extract(payload.url)
         except ExtractionError as exc:
@@ -222,7 +227,7 @@ def create_app(settings: Settings | None = None, run_background_inline: bool = F
             source_type="url",
             url=extracted.url,
             voice=voice,
-            settings={"autoplay": payload.autoplay, "speed": payload.speed, "language": payload.language},
+            settings=snapshot,
         )
         logger.info(
             "url_generation_submitted generation_id=%s voice=%s speed=%s url=%s text_chars=%s",

@@ -8,26 +8,18 @@ afterEach(() => {
 });
 
 const sampleOptions = {
-  default_language: "en",
-  default_model: "qwen3-tts-instruct-flash-realtime",
-  default_speed: 1,
-  default_voice: "Kai",
-  languages: [{ value: "en", label: "English" }],
-  models: [{ value: "qwen3-tts-instruct-flash-realtime", label: "Qwen Instruct" }],
-  voices: [{ value: "Kai", label: "Kai - soothing man" }],
-  voices_by_model: {
-    "qwen3-tts-instruct-flash-realtime": [{ value: "Kai", label: "Kai - soothing man" }],
-  },
-  speeds: [{ value: 1, label: "1x" }],
+  default_language: "en", default_speed: 1, default_voice_id: 11,
+  voice_catalog: [{id:11,name:"Kai",provider:'qwen',available:true,model:'instruct',languages:['en'],supports_instructions:true}],
+  languages: [{value:'en',label:'English'}], speeds:[{value:1,label:'1x'}],
 };
 
 function renderInstructionSamplePage() {
+  vi.spyOn(window.HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
   document.body.innerHTML = `
     <form id="instruction-sample-form">
       <select id="instruction-language"></select>
       <select id="instruction-voice"></select>
       <select id="instruction-speed"></select>
-      <select id="instruction-model"></select>
       <textarea id="instruction-prompt">Calm narration.</textarea>
       <textarea id="instruction-text">Sample text.</textarea>
       <button id="instruction-sample" type="submit">Sample</button>
@@ -109,36 +101,6 @@ describe("Generate-page voice sampling", () => {
 });
 
 describe("Instruction voice sample page", () => {
-  it("updates voices when the selected model changes", async () => {
-    renderInstructionSamplePage();
-    const modelOptions = {
-      ...sampleOptions,
-      models: [
-        { value: "model-one", label: "Model one" },
-        { value: "model-two", label: "Model two" },
-      ],
-      default_model: "model-one",
-      default_voice: "First Voice",
-      voices: [{ value: "First Voice", label: "First voice" }],
-      voices_by_model: {
-        "model-one": [{ value: "First Voice", label: "First voice" }],
-        "model-two": [{ value: "Second Voice", label: "Second voice" }],
-      },
-    };
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(globalThis.Response.json(modelOptions)));
-
-    await import("../../src/tts_app/static/instruction-voice-sample.js?test=model-voices");
-    await vi.waitFor(() => expect(document.querySelector("#instruction-voice").value).toBe("First Voice"));
-    const modelSelect = document.querySelector("#instruction-model");
-
-    modelSelect.value = "model-two";
-    modelSelect.dispatchEvent(new globalThis.Event("change", { bubbles: true }));
-
-    expect(document.querySelector("#instruction-voice").value).toBe("Second Voice");
-    expect(document.querySelector("#instruction-voice").textContent).toContain("Second voice");
-    expect(document.querySelector("#instruction-voice").textContent).not.toContain("First voice");
-  });
-
   it("loads options and restores the sample button after a validation error", async () => {
     renderInstructionSamplePage();
     const fetchMock = vi
@@ -161,7 +123,7 @@ describe("Instruction voice sample page", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await import("../../src/tts_app/static/instruction-voice-sample.js?test=validation-state");
-    await vi.waitFor(() => expect(document.querySelector("#instruction-voice").value).toBe("Kai"));
+    await vi.waitFor(() => expect(document.querySelector("#instruction-voice").value).toBe("11"));
 
     document.querySelector("#instruction-sample-form").dispatchEvent(
       new globalThis.Event("submit", { bubbles: true, cancelable: true }),

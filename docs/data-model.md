@@ -9,11 +9,13 @@ Readvox stores metadata in SQLite and bytes on the filesystem. The exact schema 
 - `data/audio/<generation_id>/full.mp3`: stitched continuous playback artifact.
 - `data/audio/voice-samples/<cache_key>.mp3`: derived voice sample cache files.
 - `data/images/<ocr_draft_id>/<ocr_draft_image_id>/`: source images for OCR drafts.
+- `data/voices/<bundle_hash>/`: durable cloned-voice reference WAVs and source manifests.
 
 ## Core Relationships
 
 ```mermaid
 erDiagram
+    voices ||--o{ voice_profiles : selected_by
     generations ||--o{ text_segments : has
     generations ||--o{ audio_segments : has
     generations ||--o| continuous_audio_artifacts : has
@@ -46,7 +48,7 @@ OCR image workflows are staged as drafts until the user creates audio:
 
 `voice_preferences` stores the user's preferred voice per language.
 
-Voice sample audio is cached under `data/audio/voice-samples/` by provider/model/language/voice/speed/sample-text hash. Normal Generate-page samples use fixed app text; `/voice-sample` instruction experiments can generate cached audio from user-entered sample text and instructions. The complete sample text and configured segment boundary participate in the cache key. Text longer than the segment boundary is synthesized sequentially and concatenated into one atomic MP3 cache file; a failed or canceled segment leaves no partial cache entry. These cache files are not generation History rows and are not removed by generation deletion. `DELETE /api/voice-samples/cache`, exposed by the experiment page's Clear samples control, removes the full voice sample cache, including both fixed-text samples and instruction experiment samples. Cache-clear failures are returned to the client rather than reported as successful.
+Voice sample audio is cached under `data/audio/voice-samples/` by provider/model/language/voice/speed/sample-text hash. The profile editor, also available at `/voice-sample`, generates cached audio from current unsaved preview text and instructions. The legacy fixed-text sample API remains compatible. The complete sample text and configured segment boundary participate in the cache key. Text longer than the segment boundary is synthesized sequentially and concatenated into one atomic MP3 cache file; a failed or canceled segment leaves no partial cache entry. These cache files are not generation History rows and are not removed by generation deletion. `DELETE /api/voice-samples/cache`, exposed by the profile editor's Clear samples control, removes the full voice sample cache, including both fixed-text samples and instruction preview samples. Cache-clear failures are returned to the client rather than reported as successful.
 
 ## Playback Telemetry
 
@@ -58,3 +60,15 @@ Voice sample audio is cached under `data/audio/voice-samples/` by provider/model
 - Deleting a generation removes its cached audio directory.
 - Deleting an unlinked OCR draft removes its stored source image directory.
 - Deleting an image generation force-deletes its linked OCR draft and image directories.
+
+## Voice catalog and profiles
+
+`voices` stores a stable ID/key, provider and provider voice ID, friendly name, kind, availability, one `model`, `languages_json`, `supports_instructions`, optional private `metadata_json`, and timestamps. Provider plus provider voice ID is unique. A multilingual voice has one row with multiple language codes. Profile speed, chosen language, instructions and preview text do not belong in catalog defaults.
+
+`voice_profiles` stores ID, trimmed name, Unicode case-folded unique `name_key`, required `voice_id` foreign key, language, speed, instructions, preview text and timestamps. It contains no model. Every profile is editable/deletable; its deletion leaves the referenced voice and all independent audio/reference assets intact.
+
+Explicit offline population synchronizes the selected provider's built-ins; normal refresh marks retired voices unavailable without deleting profiles. Clone installation writes the same catalog shape and adds durable metadata only. Exact WAVs and source manifests live below `data/voices/` and have no automatic cleanup flow. Back up SQLite, installed bundles and private workshop runs together.
+
+Startup may seed ordinary default profiles when compatible voices first become available. Profiles are never recreated after deletion by startup, sync or installation.
+
+Profile-based generation `settings_json` snapshots `profile_id`, `profile_name`, `voice_id`, `voice_name`, `provider`, `model`, raw `voice`, `language`, `speed`, and `instructions`. These are historical values, not live references. Catalog/model changes and profile deletion do not change active jobs or old entries. History displays saved friendly profile labels; absent historical model metadata stays unknown. Existing voice preferences remain independent.

@@ -7,7 +7,8 @@ Use this while actively editing the app. `--reload` restarts the Python process 
 ```bash
 cd /home/mohan/tts
 
-TTS_PROVIDER=fake \
+env -u TTS_DB_PATH -u TTS_AUDIO_DIR -u TTS_IMAGE_DIR \
+TTS_DATA_DIR=/tmp/readvox-dev TTS_PROVIDER=fake OCR_PROVIDER=fake \
 .venv/bin/uvicorn tts_app.api:create_app \
   --factory \
   --reload \
@@ -17,7 +18,7 @@ TTS_PROVIDER=fake \
   --log-level info
 ```
 
-Open `http://127.0.0.1:8001` locally, or use your private HTTPS proxy URL if configured.
+Open `http://127.0.0.1:8001` locally. Fresh fake storage has an empty profile editor and its test output is not playable speech. For interactive speech checks, use the [Qwen quick start](../README.md#quick-start) with a populated catalog.
 
 ## Application Logging
 
@@ -40,7 +41,7 @@ journalctl -u tts -f
 
 1. Run `.venv/bin/pytest -q`.
 2. Run `npm run check:js`, `npm run lint:js`, and `npm run test:js`.
-3. Run `TTS_PROVIDER=fake .venv/bin/uvicorn tts_app.api:create_app --factory --host 127.0.0.1 --port 8001`.
+3. For manual audio checks, use the [Qwen quick start](../README.md#quick-start); previews and generations make paid requests. Automated tests use fake providers and their own catalog fixtures.
 4. Open `http://127.0.0.1:8001`.
 5. Paste text with multiple sentences and generate audio.
 6. Confirm segments appear in Playback.
