@@ -14,5 +14,8 @@ def get_provider(settings: Settings) -> TTSProvider:
             api_key=settings.qwen_api_key,
             model=settings.qwen_model,
             realtime_url=settings.qwen_realtime_url,
+            setup_timeout=settings.qwen_setup_timeout,
+            audio_timeout=settings.qwen_audio_timeout,
+            segment_timeout=settings.qwen_segment_timeout,
         )
     raise ValueError(f"unknown TTS provider: {settings.provider_name}")

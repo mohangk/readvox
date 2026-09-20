@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import math
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -22,6 +23,9 @@ class Settings:
     max_image_bytes: int
     default_english_voice: str
     default_chinese_voice: str
+    qwen_setup_timeout: float = 15
+    qwen_audio_timeout: float = 60
+    qwen_segment_timeout: float = 180
 
 
 def load_settings() -> Settings:
@@ -37,9 +41,19 @@ def load_settings() -> Settings:
         qwen_model=os.environ.get("TTS_MODEL", "qwen3-tts-instruct-flash-realtime"),
         ocr_model=os.environ.get("OCR_MODEL", "qwen-vl-ocr"),
         qwen_realtime_url=os.environ.get("QWEN_REALTIME_URL", "wss://dashscope-intl.aliyuncs.com/api-ws/v1/realtime"),
+        qwen_setup_timeout=_timeout("QWEN_SETUP_TIMEOUT_SECONDS", 15),
+        qwen_audio_timeout=_timeout("QWEN_AUDIO_TIMEOUT_SECONDS", 60),
+        qwen_segment_timeout=_timeout("QWEN_SEGMENT_TIMEOUT_SECONDS", 180),
         default_audio_ext=os.environ.get("TTS_AUDIO_EXT", "mp3"),
         segment_max_chars=int(os.environ.get("TTS_SEGMENT_MAX_CHARS", "550")),
         max_image_bytes=int(os.environ.get("TTS_MAX_IMAGE_BYTES", "10485760")),
         default_english_voice=os.environ.get("TTS_DEFAULT_ENGLISH_VOICE", "Kai"),
         default_chinese_voice=os.environ.get("TTS_DEFAULT_CHINESE_VOICE", "Cherry"),
     )
+
+
+def _timeout(name: str, default: float) -> float:
+    value = float(os.environ.get(name, default))
+    if not math.isfinite(value) or value <= 0:
+        raise ValueError(f"{name} must be finite and positive")
+    return value

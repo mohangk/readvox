@@ -62,7 +62,6 @@ async def test_qwen_provider_sends_realtime_events_and_yields_audio():
         "session.update",
         "input_text_buffer.append",
         "input_text_buffer.commit",
-        "session.finish",
     ]
     assert websocket.sent_events[0]["session"]["voice"] == "Cherry"
     assert websocket.sent_events[0]["session"]["mode"] == "commit"
@@ -149,7 +148,7 @@ async def test_qwen_provider_rejects_incomplete_response():
         connect=connect,
     )
 
-    with pytest.raises(ProviderError, match="response incomplete"):
+    with pytest.raises(ProviderError, match="response did not complete successfully"):
         async for _ in provider.stream_speech("hello", TTSOptions(voice="Cherry")):
             pass
 
@@ -187,7 +186,7 @@ async def test_qwen_provider_turns_server_error_into_provider_error():
         connect=connect,
     )
 
-    with pytest.raises(ProviderError, match="bad voice"):
+    with pytest.raises(ProviderError, match="PROVIDER_ERROR"):
         async for _ in provider.stream_speech("hello", TTSOptions(voice="Missing")):
             pass
     assert websocket.closed is True
@@ -205,7 +204,7 @@ async def test_qwen_provider_wraps_connect_failure_in_provider_error():
         connect=connect,
     )
 
-    with pytest.raises(ProviderError, match="qwen provider failed: dns failed"):
+    with pytest.raises(ProviderError, match="OSError"):
         async for _ in provider.stream_speech("hello", TTSOptions(voice="Cherry")):
             pass
 
@@ -264,7 +263,7 @@ async def test_qwen_provider_close_error_does_not_mask_provider_error():
         connect=connect,
     )
 
-    with pytest.raises(ProviderError, match="bad voice"):
+    with pytest.raises(ProviderError, match="PROVIDER_ERROR"):
         async for _ in provider.stream_speech("hello", TTSOptions(voice="Missing")):
             pass
 
@@ -281,6 +280,8 @@ def test_qwen_provider_build_url_preserves_query_and_urlencodes_model():
 
 class FakeWebSocket:
     def __init__(self, events, close_error=None):
+        if not any(e.get('type') == 'session.created' for e in events) and type(self) is FakeWebSocket:
+            events = [{'type': 'session.created'}, {'type': 'session.updated'}] + events
         self.events = [json.dumps(event) for event in events]
         self.sent_events = []
         self.closed = False
@@ -301,3 +302,113 @@ class FakeWebSocket:
         self.closed = True
         if self.close_error is not None:
             raise self.close_error
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('phase', ['session creation', 'session settings', 'audio'])
+async def test_qwen_bounds_stalled_protocol_phases(phase):
+    import asyncio
+    class Stalled(FakeWebSocket):
+        async def __anext__(self):
+            if self.events:
+                return await super().__anext__()
+            await asyncio.Event().wait()
+    events = [] if phase == 'session creation' else [{'type': 'session.created'}]
+    if phase == 'audio':
+        events.append({'type': 'session.updated'})
+    ws = Stalled(events)
+    async def connect(*args, **kwargs):
+        return ws
+    provider = QwenTTSProvider('key', 'model', 'wss://example.test', connect=connect,
+                               setup_timeout=.02, audio_timeout=.02, segment_timeout=.2)
+    with pytest.raises(ProviderError, match=phase):
+        _ = [chunk async for chunk in provider.stream_speech('private text', TTSOptions(voice='Kai'))]
+    assert ws.closed
+    if phase != 'audio':
+        assert not any(e['type'] == 'input_text_buffer.append' for e in ws.sent_events)
+
+
+@pytest.mark.asyncio
+async def test_qwen_waits_for_acknowledgements_and_retains_safe_diagnostics():
+    class Ordered(FakeWebSocket):
+        async def __anext__(self):
+            e = await super().__anext__()
+            kind = json.loads(e)['type']
+            if kind == 'session.created':
+                assert self.sent_events == []
+            if kind == 'session.updated':
+                assert [x['type'] for x in self.sent_events] == ['session.update']
+            return e
+    ws = Ordered([
+        {'type': 'session.created', 'session': {'id': 'session-test'}},
+        {'type': 'session.updated'},
+        {'type': 'error', 'error': {'code': 'SERVER_ERROR', 'message': 'private text secret-key'}},
+    ])
+    async def connect(*args, **kwargs):
+        return ws
+    provider = QwenTTSProvider('secret-key', 'model', 'wss://example.test', connect=connect)
+    with pytest.raises(ProviderError) as error:
+        _ = [c async for c in provider.stream_speech('private text', TTSOptions(voice='Kai'))]
+    assert 'SERVER_ERROR' in str(error.value) and 'session-test' in str(error.value)
+    assert 'private text' not in str(error.value) and 'secret-key' not in str(error.value)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('audio', [False, True])
+async def test_qwen_non_audio_events_do_not_reset_deadline_and_total_is_bounded(audio):
+    import asyncio
+    class Endless(FakeWebSocket):
+        async def __anext__(self):
+            if self.events:
+                return await super().__anext__()
+            await asyncio.sleep(.002)
+            return json.dumps({'type': 'response.audio.delta', 'delta': 'YQ=='} if audio else {'type': 'response.created'})
+    ws = Endless([{'type': 'session.created'}, {'type': 'session.updated'}])
+    async def connect(*args, **kwargs):
+        return ws
+    p = QwenTTSProvider('key', 'model', 'wss://example.test', connect=connect,
+                        audio_timeout=.02, segment_timeout=.06)
+    with pytest.raises(ProviderError, match='timed out'):
+        _ = [c async for c in p.stream_speech('hello', TTSOptions(voice='Kai'))]
+    assert ws.closed
+
+
+@pytest.mark.asyncio
+async def test_qwen_close_timeout_keeps_successful_audio():
+    import asyncio
+    class SlowClose(FakeWebSocket):
+        async def close(self):
+            await asyncio.Event().wait()
+    ws = SlowClose([{'type': 'session.created'}, {'type': 'session.updated'},
+                    {'type': 'response.audio.delta', 'delta': 'YQ=='},
+                    {'type': 'response.done', 'response': {'status': 'completed'}}])
+    async def connect(*args, **kwargs):
+        return ws
+    p = QwenTTSProvider('key', 'model', 'wss://example.test', connect=connect, close_timeout=.02)
+    async with asyncio.timeout(.3):
+        assert [c.data async for c in p.stream_speech('hello', TTSOptions(voice='Kai'))] == [b'a']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('echo', ['private customer account', 'private\\ncustomer', 'private   customer'])
+async def test_qwen_diagnostics_exclude_partial_and_escaped_input(echo, caplog):
+    ws = FakeWebSocket([{'type': 'error', 'error': {'code': 'SERVER_ERROR', 'message': echo}}])
+    async def connect(*args, **kwargs):
+        return ws
+    provider = QwenTTSProvider('secret-key', 'model', 'wss://example.test', connect=connect)
+    with pytest.raises(ProviderError) as error:
+        _ = [c async for c in provider.stream_speech('private customer account 12345. Additional content.', TTSOptions(voice='Kai'))]
+    assert 'SERVER_ERROR' in str(error.value)
+    assert 'private' not in str(error.value) + caplog.text
+
+
+@pytest.mark.asyncio
+async def test_qwen_transport_error_does_not_echo_request(caplog):
+    async def connect(*args, **kwargs):
+        raise OSError('Authorization: Bearer secret-key; private customer')
+    provider = QwenTTSProvider('secret-key', 'model', 'wss://example.test', connect=connect)
+    with pytest.raises(ProviderError) as error:
+        _ = [c async for c in provider.stream_speech('private customer account', TTSOptions(voice='Kai'))]
+    assert 'OSError' in str(error.value)
+    assert 'private' not in str(error.value) + caplog.text
+    assert 'secret-key' not in str(error.value) + caplog.text

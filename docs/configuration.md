@@ -117,3 +117,9 @@ For the previously used realtime TTS model, `qwen3-tts-flash-realtime`, the rele
 Future cost tracking should store the model, deployment mode, input character count, pricing source date, and calculated estimated cost per generation. Pricing can change, so keep this as a documented baseline rather than hard-coding it as permanent billing truth.
 
 The historical flash-model prices above do not establish instruction-model pricing. Re-check Alibaba Cloud pricing before implementing any billing-sensitive behavior.
+
+## Qwen request deadlines
+
+`QWEN_SETUP_TIMEOUT_SECONDS` (default `15`) bounds connection, setup acknowledgements and each text/control send. `QWEN_AUDIO_TIMEOUT_SECONDS` (default `60`) bounds waiting for the first or next audio chunk and final completion; non-audio events do not reset it. `QWEN_SEGMENT_TIMEOUT_SECONDS` (default `180`) bounds the whole synthesis request. Values must be finite and positive. WebSocket cleanup is limited to five seconds.
+
+Readvox waits for Qwen's session creation and settings acknowledgement before submitting text. Failures include the stage, elapsed time and available provider request/session IDs; submitted text and credentials are redacted. These limits prevent indefinite waits, but do not guarantee provider availability. Successful synthesis is retained even if closing the completed connection fails.

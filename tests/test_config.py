@@ -44,3 +44,13 @@ def test_default_voice_config_does_not_read_legacy_qwen_voice(monkeypatch):
     settings = load_settings()
 
     assert settings.default_english_voice == "Kai"
+
+
+def test_provider_timeouts_are_configurable_and_reject_unbounded_values(monkeypatch):
+    import pytest
+    monkeypatch.setenv('QWEN_AUDIO_TIMEOUT_SECONDS', '12.5')
+    assert load_settings().qwen_audio_timeout == 12.5
+    for value in ['0', '-1', 'inf', 'nan']:
+        monkeypatch.setenv('QWEN_AUDIO_TIMEOUT_SECONDS', value)
+        with pytest.raises(ValueError, match='finite and positive'):
+            load_settings()
