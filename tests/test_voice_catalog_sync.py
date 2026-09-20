@@ -35,7 +35,7 @@ def test_check_does_not_create_target(tmp_path):
     assert result.returncode == 0, result.stderr
     assert not target.exists()
     report = json.loads(result.stdout)
-    assert report['added'] and report['schema_upgraded']
+    assert report['added'] and report['target_exists'] is False
 
 
 def test_apply_without_credentials_and_repeat_is_noop(tmp_path):
@@ -88,22 +88,6 @@ def test_invalid_sources_and_late_collision_are_atomic(unpopulated_settings):
         assert unpopulated_settings.db_path.read_bytes() == before
 
 
-def test_check_old_schema_and_failed_apply_leave_it_unchanged(unpopulated_settings):
-    from tts_app.voice_catalog_sync import sync_voice_catalog
-    unpopulated_settings.data_dir.mkdir(exist_ok=True)
-    with sqlite3.connect(unpopulated_settings.db_path) as conn:
-        conn.executescript('''CREATE TABLE profile_migrations(version INTEGER PRIMARY KEY);
-        CREATE TABLE voice_profiles(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT,name_key TEXT,model TEXT,voice TEXT,language TEXT,speed REAL,instructions TEXT,preview_text TEXT,created_at TEXT,updated_at TEXT);
-        INSERT INTO voice_profiles VALUES(7,'Unknown','unknown','missing','unknown','en',1,'','Sample','created','updated');''')
-    before = {path.name: path.read_bytes() for path in unpopulated_settings.data_dir.iterdir() if path.is_file()}
-    report = sync_voice_catalog(unpopulated_settings, check_only=True, definitions=[definition()])
-    assert report['migration']['deleted_profiles'] == [dict(id=7, reason='Unresolvable voice identity or model binding')]
-    assert {path.name: path.read_bytes() for path in unpopulated_settings.data_dir.iterdir() if path.is_file()} == before
-    with pytest.raises(ValueError):
-        sync_voice_catalog(unpopulated_settings, definitions=[definition(), definition()])
-    assert unpopulated_settings.db_path.read_bytes() == before['app.db']
-
-
 def test_reviewed_source_has_one_binding_and_identity_per_preset():
     from tts_app.providers.qwen_catalog import qwen_voice_definitions, INSTRUCTION_MODEL, FLASH_MODEL
     voices = qwen_voice_definitions()
@@ -138,21 +122,6 @@ def test_check_refuses_checkpoint_capable_wal_connection_without_changing_files(
         assert directory_fingerprints(unpopulated_settings.data_dir) == before
     finally:
         conn.close()
-
-
-def test_sync_uses_explicit_qwen_context_for_providerless_legacy_profile(unpopulated_settings):
-    from tts_app.voice_catalog_sync import sync_voice_catalog
-    unpopulated_settings.data_dir.mkdir()
-    with sqlite3.connect(unpopulated_settings.db_path) as conn:
-        conn.executescript('''CREATE TABLE voice_profiles(id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT,name_key TEXT,model TEXT,voice TEXT,language TEXT,speed REAL,instructions TEXT,
-        preview_text TEXT,created_at TEXT,updated_at TEXT);
-        INSERT INTO voice_profiles VALUES(7,'Kai','kai','qwen3-tts-flash-realtime','Kai','en',1,'','Sample','created','updated');''')
-    assert unpopulated_settings.provider_name == 'fake'
-    report = sync_voice_catalog(unpopulated_settings, provider_name='qwen')
-    assert report['migration']['deleted_profiles'] == []
-    saved = Storage(unpopulated_settings.db_path).get_voice_profile(7)
-    assert saved['provider'] == 'qwen' and saved['voice'] == 'Kai'
 
 
 def test_invalid_runtime_provider_rejected_before_target_creation(unpopulated_settings):
@@ -231,4 +200,33 @@ def test_cli_invalid_config_preserves_existing_database(unpopulated_settings, mo
     result = run_cli(*args, *(['--check'] if check else []))
     assert result.returncode == 1
     assert 'unknown TTS provider' in result.stderr
+    assert directory_fingerprints(unpopulated_settings.data_dir) == before
+
+
+@pytest.mark.parametrize('check_only', [False, True])
+def test_unsupported_schema_check_and_apply_leave_target_unchanged(unpopulated_settings, check_only):
+    from tts_app.voice_catalog_sync import sync_voice_catalog
+    unpopulated_settings.data_dir.mkdir()
+    with sqlite3.connect(unpopulated_settings.db_path) as conn:
+        conn.execute('CREATE TABLE voice_profiles(id INTEGER PRIMARY KEY, voice TEXT, model TEXT)')
+    before = directory_fingerprints(unpopulated_settings.data_dir)
+    with pytest.raises(ValueError, match='Unsupported voice schema'):
+        sync_voice_catalog(unpopulated_settings, check_only=check_only, definitions=[definition()])
+    assert directory_fingerprints(unpopulated_settings.data_dir) == before
+
+
+def test_check_current_catalog_preserves_profiles_markers_and_media(unpopulated_settings):
+    from tts_app.voice_catalog_sync import sync_voice_catalog
+    sync_voice_catalog(unpopulated_settings, definitions=[definition()])
+    storage = Storage(unpopulated_settings.db_path)
+    selected = storage.list_voices()[0]
+    storage.initialize_voice_profiles([dict(name='Reading', voice_id=selected['id'], language='en',
+        speed=1.25, instructions='Calm', preview_text='Sample')])
+    asset = unpopulated_settings.data_dir / 'reference.wav'
+    asset.write_bytes(b'retained reference')
+    before = directory_fingerprints(unpopulated_settings.data_dir)
+    report = sync_voice_catalog(unpopulated_settings, check_only=True,
+        definitions=[{**definition(), 'name':'Updated'}, definition('new')])
+    assert report['added'] == ['builtin-new']
+    assert report['updated'] == ['builtin-reader']
     assert directory_fingerprints(unpopulated_settings.data_dir) == before

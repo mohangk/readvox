@@ -131,6 +131,8 @@ CREATE TABLE voices (
     UNIQUE(provider, provider_voice_id)
 );
 
+-- Version 1 marks completed default-profile seeding. Existing historical rows
+-- are retained but unused; this table no longer drives schema migrations.
 CREATE TABLE profile_migrations (version INTEGER PRIMARY KEY);
 
 CREATE TABLE voice_profiles (

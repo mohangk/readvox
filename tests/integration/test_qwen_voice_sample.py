@@ -26,6 +26,7 @@ def test_saved_profile_integrates_with_qwen_generation(unpopulated_settings):
     settings = replace(unpopulated_settings, provider_name="qwen", qwen_api_key=api_key)
     clone_manifest = os.environ.get("QWEN_LIVE_CLONE_MANIFEST")
     if clone_manifest:
+        # Reuse the accepted version 1 workshop enrollment in temporary storage.
         from tts_app.voice_catalog_install import install_clone_manifest
         voices = install_clone_manifest(Path(clone_manifest), settings=settings,
                                           accepted_keys=['readvox-kai-v1'])

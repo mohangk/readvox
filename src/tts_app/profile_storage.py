@@ -34,7 +34,7 @@ def insert_profile(conn, values):
 
 class ProfileStorageMixin:
     def initialize_voice_profiles(self, defaults):
-        """Seed only once; deleted profiles stay deleted, including initial clones."""
+        """Seed once using the retained version-1 marker; deletions stay deleted."""
         if not defaults:
             return
         with self.connection() as conn:

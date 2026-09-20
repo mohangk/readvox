@@ -16,7 +16,7 @@ from tts_app.voice_catalog_sync import sync_voice_catalog
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--provider', choices=['qwen'], default='qwen',
-        help='Catalog and legacy profile migration provider (default: qwen)')
+        help='Catalog provider (default: qwen)')
     parser.add_argument('--data-dir', type=Path, help='Override all target data paths, including TTS_DB_PATH')
     parser.add_argument('--check', action='store_true', help='Report without modifying target files; close database connections first (POSIX locking required)')
     args = parser.parse_args()

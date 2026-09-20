@@ -1,12 +1,15 @@
 """Private catalog preflight snapshot, using POSIX SQLite-compatible file locks.
 
-Run as a separate process: POSIX record locks held by SQLite connections in the
-calling process must conflict with this lock too. No source SQLite connection is
+Copy in a separate process: POSIX record locks held by SQLite connections in the
+calling process must conflict with the copy lock too. No source SQLite connection is
 opened, so recovery and WAL shared-memory creation happen only on the copy.
 """
 from pathlib import Path
 import shutil
+import sqlite3
+import subprocess
 import sys
+from tempfile import TemporaryDirectory
 
 
 def copy_locked_database(path, snapshot):
@@ -32,6 +35,31 @@ def copy_locked_database(path, snapshot):
             if sidecar.exists():
                 shutil.copyfile(sidecar, Path(str(snapshot) + suffix))
         # The OS releases the lock when source closes. No retry or source recovery.
+
+
+def preview_voice_database(path):
+    """Snapshot a quiescent POSIX database without changing any source files."""
+    conn = sqlite3.connect(':memory:')
+    try:
+        if path.exists():
+            with TemporaryDirectory(prefix='readvox-catalog-check-') as directory:
+                snapshot = Path(directory) / 'app.db'
+                # An explicit file path ensures the worker uses this checkout,
+                # independently of a virtualenv's editable package installation.
+                worker = Path(__file__).resolve()
+                result = subprocess.run([sys.executable, str(worker), str(path), str(snapshot)],
+                                        capture_output=True, text=True)
+                if result.returncode:
+                    raise ValueError(result.stderr.strip() or 'Cannot safely snapshot catalog database')
+                source = sqlite3.connect(snapshot)
+                try:
+                    source.backup(conn)
+                finally:
+                    source.close()
+        return conn
+    except BaseException:
+        conn.close()
+        raise
 
 
 if __name__ == '__main__':

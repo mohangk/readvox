@@ -1,36 +1,57 @@
 import json
-from pathlib import Path
 import wave
 
 import pytest
 
 from tts_app.storage import Storage
 
-RUN = '20260913T043114Z-0f3d936a'
-
 
 @pytest.fixture
-def source(tmp_path, monkeypatch):
-    root = tmp_path / 'lab'
-    run = root / RUN
-    run.mkdir(parents=True)
-    voices = []
-    for number, name, speed in [(16,'Kai',1),(11,'Vivian',1.1),(6,'Bellona',1.25),(1,'Neil',1)]:
-        audio = run / f'{number:02}-reference.wav'
-        with wave.open(str(audio),'wb') as wav:
-            wav.setnchannels(1);wav.setsampwidth(2);wav.setframerate(24000);wav.writeframes(b'\0\0' * 72000)
-        voices.append({'number':number,'voice':name,'speed':speed,'status':'completed',
-                       'preferred_name':f'rv{number}','reference_audio':f'{RUN}/{audio.name}',
-                       'enrollment':{'voice':f'qwen-tts-vc-test-{name}','target_model':'qwen3-tts-vc-realtime-2026-01-15','request_id':'test'},
-                       'tracks':{'cloned':{'status':'completed','model':'qwen3-tts-vc-realtime-2026-01-15','speed':speed,'instructions':''}}})
-    data={'run_id':RUN,'clone_model':'qwen3-tts-vc-realtime-2026-01-15','reference_text':'Reference passage.',
-          'settings':{'model':'qwen3-tts-instruct-flash-realtime','instructions':'Calm','language':'English'},'voices':voices}
-    path=run/'manifest.json';path.write_text(json.dumps(data))
+def source(tmp_path):
     import hashlib
-    from tts_app.voice_tools import approved
-    monkeypatch.setattr(approved, 'APPROVED_MANIFEST_SHA256', hashlib.sha256(path.read_bytes()).hexdigest())
-    monkeypatch.setattr(approved, 'APPROVED_REFERENCE_SHA256', {v['number']:hashlib.sha256((root/v['reference_audio']).read_bytes()).hexdigest() for v in voices})
+    from tts_app.voice_tools.manifest import save_manifest
+
+    run = tmp_path / 'workshop'
+    run.mkdir()
+    text = run / 'passage.txt'
+    text.write_text('A comparison passage.')
+
+    def asset(path):
+        return {'path': path.name, 'sha256': hashlib.sha256(path.read_bytes()).hexdigest()}
+
+    voices = []
+    for name, speed in [('Kai', 1), ('Vivian', 1.1), ('Bellona', 1.25), ('Neil', 1)]:
+        audio = run / f'{name.lower()}-reference.wav'
+        with wave.open(str(audio), 'wb') as wav:
+            wav.setparams((1, 2, 24000, 0, 'NONE', 'not compressed'))
+            wav.writeframes(b'\0\0' * 72000)
+        key = f'readvox-{name.lower()}-v1'
+        settings = dict(model='qwen3-tts-vc-realtime-2026-01-15', voice=f'qwen-tts-vc-test-{name}',
+                        language='English', speed=speed, instructions='', audio_format='pcm', sample_rate=24000)
+        voices.append(dict(
+            key=key, name=f'{name} Narrator', language='en', speed=speed,
+            reference={**asset(audio), 'provenance': {'text': asset(text)}},
+            enrollment={'voice': settings['voice'], 'target_model': settings['model']},
+            acceptance={'key': key, 'speed': speed, 'source': 'operator'},
+            comparisons=[dict(id=f'comparison-{name.lower()}', mode='cloned', settings=settings,
+                              status='completed', audio=asset(audio),
+                              passages=[dict(text=asset(text), audio=asset(audio), status='completed', duration=3)],
+                              boundaries=[0], duration=3,
+                              input_identity={'mode': 'cloned', 'settings': settings,
+                                              'passage_hashes': [asset(text)['sha256']]})]))
+    path = run / 'manifest.json'
+    save_manifest(path, {'schema_version': 1, 'kind': 'voice', 'run_id': 'narrators-v1', 'voices': voices})
     return path
+
+
+def test_install_requires_versioned_voice_manifest(unpopulated_settings, source):
+    from tts_app.voice_catalog_install import install_clone_manifest
+    data = json.loads(source.read_text())
+    del data['schema_version']
+    source.write_text(json.dumps(data))
+    with pytest.raises(ValueError, match='schema version'):
+        install_clone_manifest(source, settings=unpopulated_settings)
+    assert not unpopulated_settings.data_dir.exists()
 
 
 def test_offline_check_writes_nothing_then_install_is_idempotent(unpopulated_settings, source):
@@ -46,7 +67,7 @@ def test_offline_check_writes_nothing_then_install_is_idempotent(unpopulated_set
     assert install_clone_manifest(source, settings=unpopulated_settings) == profiles
     storage=Storage(unpopulated_settings.db_path)
     for voice in storage.list_voices('qwen'):
-        assert (unpopulated_settings.data_dir/voice['metadata']['reference_path']).read_bytes() == (source.parent/'16-reference.wav').read_bytes()
+        assert (unpopulated_settings.data_dir/voice['metadata']['reference_path']).read_bytes() == (source.parent/'kai-reference.wav').read_bytes()
     assert source.read_bytes() == original
 
 
@@ -54,12 +75,12 @@ def test_offline_check_writes_nothing_then_install_is_idempotent(unpopulated_set
 def test_invalid_source_never_changes_database_or_copies(unpopulated_settings, source, change):
     from tts_app.voice_catalog_install import install_clone_manifest
     data=json.loads(source.read_text());voice=data['voices'][0]
-    if change=='model': voice['tracks']['cloned']['model']='wrong'
+    if change=='model': voice['comparisons'][0]['settings']['model']='wrong'
     if change=='voice': voice['enrollment']['voice']=''
-    if change=='missing': voice['reference_audio']=f'{RUN}/missing.wav'
-    if change=='escape': voice['reference_audio']='../outside.wav'
+    if change=='missing': voice['reference']['path']='missing.wav'
+    if change=='escape': voice['reference']['path']='../outside.wav'
     if change=='fallback': voice['enrollment']['fallback_mode']=True
-    if change=='speed': voice['speed']=1.25
+    if change=='speed': voice['acceptance']['speed']=1.25
     if change=='duplicate': data['voices'].append(voice)
     source.write_text(json.dumps(data))
     with pytest.raises((ValueError,FileNotFoundError)):
@@ -73,22 +94,14 @@ def test_profile_names_do_not_conflict_with_catalog_names(unpopulated_settings, 
     from tts_app.providers.qwen_catalog import qwen_voice_definitions
     voice=storage.install_voices([next(value for value in qwen_voice_definitions() if value['name']=='Kai')])[0]
     personal=storage.save_voice_profile(dict(name='KAI NARRATOR',voice_id=voice['id'],speed=1,language='en',instructions='',preview_text='Personal'))
+    before = unpopulated_settings.db_path.read_bytes()
+    assert len(install_clone_manifest(source, settings=unpopulated_settings, check_only=True)) == 4
+    assert unpopulated_settings.db_path.read_bytes() == before
+    assert storage.list_voice_profiles() == [personal]
     installed=install_clone_manifest(source,settings=unpopulated_settings)
     assert len(installed)==4
     assert storage.list_voice_profiles()==[personal]
     assert (unpopulated_settings.data_dir/'voices').exists()
-
-
-def test_read_only_preflight_on_existing_pre_system_schema(unpopulated_settings, source):
-    from tts_app.voice_catalog_install import install_clone_manifest
-    import sqlite3
-    unpopulated_settings.db_path.parent.mkdir(parents=True)
-    with sqlite3.connect(unpopulated_settings.db_path) as conn:
-        conn.execute('CREATE TABLE voice_profiles(id INTEGER PRIMARY KEY, name_key TEXT)')
-        conn.execute("INSERT INTO voice_profiles VALUES(1,'kai narrator')")
-    before=unpopulated_settings.db_path.read_bytes()
-    assert len(install_clone_manifest(source,settings=unpopulated_settings,check_only=True))==4
-    assert unpopulated_settings.db_path.read_bytes()==before
 
 
 def test_db_failure_retains_recoverable_assets_and_does_not_touch_source(unpopulated_settings, source, monkeypatch):
@@ -108,7 +121,7 @@ def workshop(source):
     run=source.parent
     def asset(path): return {'path':path.name,'sha256':hashlib.sha256(path.read_bytes()).hexdigest()}
     text=run/'passage.txt';text.write_text('A comparison passage.')
-    audio=run/'16-reference.wav'
+    audio=run/'kai-reference.wav'
     settings=dict(model='qwen3-tts-vc-realtime-2026-01-15',voice='qwen-tts-vc-test-kai',language='English',speed=1.0,instructions='',audio_format='pcm',sample_rate=24000,pitch=1.0,volume=1.0)
     manifest={'schema_version':1,'kind':'voice','run_id':'new-run','voices':[dict(
         key='readvox-kai-v2',name='New Kai',language='en',speed=1.0,
@@ -147,11 +160,11 @@ def test_install_cli_dry_run_and_acceptance_are_idempotent(unpopulated_settings,
     assert workshop.read_bytes()==accepted
 
 
-def test_modified_approved_reference_is_rejected(unpopulated_settings, source):
+def test_modified_reference_is_rejected(unpopulated_settings, source):
     from tts_app.voice_catalog_install import install_clone_manifest
-    reference=source.parent/'16-reference.wav'
+    reference=source.parent/'kai-reference.wav'
     reference.write_bytes(reference.read_bytes()+b'tampered')
-    with pytest.raises(ValueError,match='approval'):
+    with pytest.raises(ValueError,match='checksum'):
         install_clone_manifest(source,settings=unpopulated_settings,check_only=True)
     assert not unpopulated_settings.data_dir.exists()
 
@@ -226,30 +239,3 @@ def test_incremental_install_checks_original_bundle(unpopulated_settings, worksh
     target.write_bytes(b'changed')
     assert main(args+['--check'])==1
     assert target.read_bytes()==b'changed'
-
-
-def test_check_and_apply_preserve_legacy_qwen_profile_with_default_fake_runtime(unpopulated_settings, source):
-    import sqlite3
-    from tts_app.voice_catalog_install import install_clone_manifest
-    unpopulated_settings.data_dir.mkdir()
-    with sqlite3.connect(unpopulated_settings.db_path) as conn:
-        conn.executescript('''CREATE TABLE voice_profiles(id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT,name_key TEXT,model TEXT,voice TEXT,language TEXT,speed REAL,instructions TEXT,
-            preview_text TEXT,created_at TEXT,updated_at TEXT);
-            INSERT INTO voice_profiles VALUES(7,'Personal Kai','personal kai','qwen3-tts-flash-realtime',
-                'Kai','zh',1.25,'Calm','My preview','created','updated');''')
-    assert unpopulated_settings.provider_name == 'fake'
-    before = unpopulated_settings.db_path.read_bytes()
-    checked = install_clone_manifest(source, settings=unpopulated_settings, check_only=True)
-    assert len(checked) == 4
-    assert unpopulated_settings.db_path.read_bytes() == before
-    assert not (unpopulated_settings.data_dir / 'voices').exists()
-    storage = Storage(unpopulated_settings.db_path)
-    installed = install_clone_manifest(source, settings=unpopulated_settings, storage=storage)
-    assert len(installed) == 4
-    assert storage.voice_migration_report['deleted_profiles'] == []
-    saved = storage.get_voice_profile(7)
-    assert {field: saved[field] for field in ('name', 'provider', 'voice', 'language', 'speed',
-        'instructions', 'preview_text', 'created_at', 'updated_at')} == dict(
-        name='Personal Kai', provider='qwen', voice='Kai', language='zh', speed=1.25,
-        instructions='Calm', preview_text='My preview', created_at='created', updated_at='updated')

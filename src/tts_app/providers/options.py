@@ -25,7 +25,7 @@ class InstructionSampleCapabilities:
     default_voice: str
 
 
-# Legacy non-editor options are projections of the single reviewed inventory.
+# Workshop options are projections of the single reviewed inventory.
 from tts_app.providers.qwen_catalog import qwen_voice_definitions, INSTRUCTION_MODEL, FLASH_MODEL
 
 
@@ -59,8 +59,8 @@ QWEN_INSTRUCTION_SAMPLE_CAPABILITIES = InstructionSampleCapabilities(
         InstructionModelCapabilities(option=model, voices=QWEN_INSTRUCTION_VOICES)
         for model in QWEN_INSTRUCTION_MODELS
     ) + (InstructionModelCapabilities(
-        option=SelectOption("qwen3-tts-flash-realtime", "Qwen3 TTS Flash Realtime (legacy, no instructions)"),
-        # These presets also support Chinese in legacy saved profiles.
+        option=SelectOption("qwen3-tts-flash-realtime", "Qwen3 TTS Flash Realtime (no instructions)"),
+        # These presets support both English and Chinese.
         voices=tuple(SelectOption(voice.value, voice.label) for voice in QWEN_ENGLISH_VOICES), supports_instructions=False,
     ),),
     speeds=SPEED_OPTIONS,

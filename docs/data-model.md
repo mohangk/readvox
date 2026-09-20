@@ -69,6 +69,6 @@ Voice sample audio is cached under `data/audio/voice-samples/` by provider/model
 
 Explicit offline population synchronizes the selected provider's built-ins; normal refresh marks retired voices unavailable without deleting profiles. Clone installation writes the same catalog shape and adds durable metadata only. Exact WAVs and source manifests live below `data/voices/` and have no automatic cleanup flow. Back up SQLite, installed bundles and private workshop runs together.
 
-`profile_migrations` records forward schema changes and one-time default seeding. Migration 4 converts old raw/system profiles or multi-model catalogs to voice-owned models, removes obsolete columns/tables, preserves compatible IDs/settings/timestamps, and reports authorized incompatible-record cleanup. Profiles are never recreated after deletion by startup, sync or installation.
+Startup may seed ordinary default profiles when compatible voices first become available. Profiles are never recreated after deletion by startup, sync or installation.
 
 Profile-based generation `settings_json` snapshots `profile_id`, `profile_name`, `voice_id`, `voice_name`, `provider`, `model`, raw `voice`, `language`, `speed`, and `instructions`. These are historical values, not live references. Catalog/model changes and profile deletion do not change active jobs or old entries. History displays saved friendly profile labels; absent historical model metadata stays unknown. Existing voice preferences remain independent.

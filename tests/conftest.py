@@ -46,7 +46,7 @@ def test_settings(unpopulated_settings):
     from tts_app.storage import Storage
     from tts_app.voice_storage import builtin_voice_key
     storage = Storage(settings.db_path)
-    storage.init_schema(provider_name='fake')
+    storage.init_schema()
     storage.sync_provider_voices('fake', [{**voice, 'provider': 'fake',
         'key': builtin_voice_key('fake', voice['provider_voice_id'])} for voice in qwen_voice_definitions()])
     return settings
