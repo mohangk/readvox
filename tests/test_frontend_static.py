@@ -58,7 +58,7 @@ def test_instruction_voice_sample_page_has_profile_controls():
     assert 'id="instruction-sample"' in html
     assert 'id="clear-instruction-samples"' in html
     assert "long-form audiobook" in html
-    assert 'src="/static/app.js?v=voice-language-2"' in html
+    assert 'src="/static/app.js?v=history-profiles-1"' in html
 
 
 def test_instruction_voice_sample_javascript_posts_to_instruction_endpoint_without_telemetry():
@@ -130,8 +130,8 @@ def test_frontend_static_asset_version_bumped_for_playback_progress():
     html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
     sources = [html, *((STATIC_DIR / filename).read_text(encoding="utf-8") for filename in JS_FILES)]
 
-    assert 'href="/static/styles.css?v=voice-language-1"' in html
-    assert 'src="/static/app.js?v=voice-language-2"' in html
+    assert 'href="/static/styles.css?v=history-profiles-1"' in html
+    assert 'src="/static/app.js?v=history-profiles-1"' in html
     assert "playback-progress-1" in (STATIC_DIR / "app.js").read_text(encoding="utf-8")
     assert './ocr.js?v=voice-language-2' in (STATIC_DIR / 'app.js').read_text(encoding='utf-8')
     assert "playback-progress-1" in (STATIC_DIR / "voice-controls.js").read_text(encoding="utf-8")

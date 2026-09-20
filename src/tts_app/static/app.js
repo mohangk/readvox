@@ -1,4 +1,4 @@
-import { renderHistoryItems } from "./history.js?v=voice-language-1";
+import { createHistory } from "./history.js?v=history-profiles-1";
 import {
   audioPlayer,
   autoplayInput,
@@ -48,6 +48,9 @@ import {
   hasUsableSelectedProfile,
 } from "./profile-selection.js?v=voice-language-2";
 import { createProfileEditor } from "./profile-editor.js?v=voice-language-2";
+
+const history = createHistory({ historyList, historySearch, playerStatus, state, openGeneration, resetPlaybackState });
+const { loadHistory } = history;
 
 const playbackTelemetry = createPlaybackTelemetry();
 const enqueueProgressSave = createQueuedProgressSaver(persistProgress);
@@ -216,20 +219,6 @@ async function openProfileEditor() {
   } catch (error) { document.querySelector("#profile-status").textContent = error.message; }
 }
 
-async function loadHistory() {
-  try {
-    const response = await fetch("/api/generations");
-    if (!response.ok) {
-      historyList.innerHTML = '<div class="history-item">Unable to load history</div>';
-      return;
-    }
-    state.generations = await response.json();
-    renderHistory();
-  } catch {
-    historyList.innerHTML = '<div class="history-item">Unable to load history</div>';
-  }
-}
-
 async function acquireWakeLock() {
   if (!("wakeLock" in navigator) || state.wakeLock) {
     return;
@@ -254,31 +243,6 @@ function releaseWakeLock() {
   recordPlaybackTelemetry("wake_lock_released");
   state.wakeLock = null;
   lock.release().catch(() => {});
-}
-
-function renderHistory() {
-  historyList.innerHTML = renderHistoryItems(state.generations, historySearch.value);
-}
-
-async function deleteGeneration(generationId, button = null) {
-  if (!window.confirm("Delete this history entry and cached audio?")) {
-    return;
-  }
-  await withButtonBusy(button, "Deleting...", async () => {
-    try {
-      const response = await fetch(`/api/generations/${generationId}`, { method: "DELETE" });
-      if (!response.ok) {
-        playerStatus.textContent = "Unable to delete history entry";
-        return;
-      }
-      if (state.currentGenerationId === generationId) {
-        resetPlaybackState("Deleted generation");
-      }
-      await loadHistory();
-    } catch {
-      playerStatus.textContent = "Unable to delete history entry";
-    }
-  });
 }
 
 async function openGeneration(generationId, options = {}) {
@@ -585,34 +549,11 @@ urlModeButton.addEventListener("click", () => setInputMode("url"));
 imageModeButton.addEventListener("click", () => setInputMode("image"));
 draftImagesModeButton.addEventListener("click", () => setInputMode("draft-images"));
 generateForm.addEventListener("submit", submitGeneration);
-historySearch.addEventListener("input", renderHistory);
+history.registerEvents();
 backToHistory.addEventListener("click", () => {
   stopPlayback();
   closeEventSource();
   showView("history-view");
-});
-
-historyList.addEventListener("click", (event) => {
-  const action = event.target.closest("[data-action]");
-  const historyItem = event.target.closest("[data-generation-id]");
-  if (!historyItem) {
-    return;
-  }
-  const generationId = Number(historyItem.dataset.generationId);
-  if (action?.dataset.action === "delete") {
-    deleteGeneration(Number(action.dataset.generationId), action);
-    return;
-  }
-  if (action?.dataset.action === "open") {
-    openGeneration(Number(action.dataset.generationId), { subscribe: false, autoplay: true, button: action });
-    return;
-  }
-  if (!action) {
-    if (event.target.closest(".history-details") && !action) {
-      return;
-    }
-    openGeneration(generationId, { subscribe: false, autoplay: true });
-  }
 });
 
 readingPane.addEventListener("click", (event) => {

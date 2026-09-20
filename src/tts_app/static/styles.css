@@ -110,3 +110,9 @@ textarea { resize: vertical; min-height: 220px; }
 
 .voice-summary { color: var(--muted, #64748b); font-size: .9rem; line-height: 1.5; }
 .voice-summary:empty { display: none; }
+
+.history-item-failed { border-color: #b42318; border-left-width: 4px; }
+.history-failure { display: flex; align-items: center; gap: 6px; margin-top: 8px; padding: 6px 8px; border-radius: 4px; background: #fff0ed; color: #9c2117; font-weight: 700; }
+.history-details .history-error { min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: #9c2117; }
+
+.history-failure svg { flex: none; }
