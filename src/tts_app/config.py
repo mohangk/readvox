@@ -38,7 +38,7 @@ def load_settings() -> Settings:
         provider_name=os.environ.get("TTS_PROVIDER", "fake"),
         ocr_provider_name=os.environ.get("OCR_PROVIDER", "fake"),
         qwen_api_key=os.environ.get("QWEN_API_KEY") or os.environ.get("DASHSCOPE_API_KEY"),
-        qwen_model=os.environ.get("TTS_MODEL", "qwen3-tts-instruct-flash-realtime"),
+        qwen_model=os.environ.get("TTS_MODEL", "qwen3-tts-flash-realtime"),
         ocr_model=os.environ.get("OCR_MODEL", "qwen-vl-ocr"),
         qwen_realtime_url=os.environ.get("QWEN_REALTIME_URL", "wss://dashscope-intl.aliyuncs.com/api-ws/v1/realtime"),
         qwen_setup_timeout=_timeout("QWEN_SETUP_TIMEOUT_SECONDS", 15),

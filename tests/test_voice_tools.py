@@ -193,7 +193,7 @@ def test_candidate_provenance_control_and_byte_identity(tmp_path):
     instructions = tmp_path / 'instructions.txt'
     instructions.write_text('A precise custom delivery.')
     samples = tmp_path / 'samples'
-    assert main(['candidates', '--text', str(text), '--voices', 'Neil', '--speeds', '1.25', '--instructions', str(instructions), '--output', str(samples)], provider=Speech()) == 0
+    assert main(['candidates', '--text', str(text), '--voices', 'Neil', '--speeds', '1.25', '--instructions', str(instructions), '--model', 'qwen3-tts-instruct-flash-realtime', '--output', str(samples)], provider=Speech()) == 0
     args = ['enroll', '--reference', str(samples / '001.wav'), '--candidate-manifest', str(samples / 'manifest.json'), '--sample', '1', '--name', 'Neil Narrator', '--key', 'readvox-neil-v2', '--output', str(tmp_path / 'voice')]
     assert main(args, enrollment=Enrollment()) == 0
     path = tmp_path / 'voice/manifest.json'

@@ -26,7 +26,7 @@ class InstructionSampleCapabilities:
 
 
 # Workshop options are projections of the single reviewed inventory.
-from tts_app.providers.qwen_catalog import qwen_voice_definitions, INSTRUCTION_MODEL, FLASH_MODEL
+from tts_app.providers.qwen_catalog import qwen_voice_definitions, FLASH_MODEL
 
 
 def _voice_options(language):
@@ -36,12 +36,18 @@ def _voice_options(language):
 
 QWEN_ENGLISH_VOICES = _voice_options('en')
 QWEN_CHINESE_VOICES = _voice_options('zh')
+# Retained solely to validate/reuse historical workshop manifests. These models
+# are not offered by the current catalog or chosen for new candidate runs.
+INSTRUCTION_MODEL = 'qwen3-tts-instruct-flash-realtime'
 QWEN_INSTRUCTION_MODELS = (
     SelectOption(INSTRUCTION_MODEL, 'Qwen3 TTS Instruct Flash Realtime'),
     SelectOption(INSTRUCTION_MODEL + '-2026-01-22', 'Qwen3 TTS Instruct Flash Realtime 2026-01-22'),
 )
-QWEN_INSTRUCTION_VOICES = tuple(SelectOption(voice['provider_voice_id'], voice['name'])
-    for voice in qwen_voice_definitions() if voice['supports_instructions'])
+QWEN_INSTRUCTION_VOICES = tuple(SelectOption(name, name) for name in (
+    'Cherry', 'Serena', 'Ethan', 'Chelsie', 'Momo', 'Vivian', 'Moon', 'Maia',
+    'Kai', 'Nofish', 'Bella', 'Eldric Sage', 'Mia', 'Mochi', 'Bellona', 'Vincent',
+    'Bunny', 'Neil', 'Elias', 'Arthur', 'Nini', 'Seren', 'Pip', 'Stella',
+))
 
 SPEED_OPTIONS: tuple[SelectOption, ...] = (
     SelectOption(0.75, "0.75x"),
@@ -64,6 +70,6 @@ QWEN_INSTRUCTION_SAMPLE_CAPABILITIES = InstructionSampleCapabilities(
         voices=tuple(SelectOption(voice.value, voice.label) for voice in QWEN_ENGLISH_VOICES), supports_instructions=False,
     ),),
     speeds=SPEED_OPTIONS,
-    default_model="qwen3-tts-instruct-flash-realtime",
+    default_model=FLASH_MODEL,
     default_voice="Kai",
 )

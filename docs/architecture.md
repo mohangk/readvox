@@ -123,7 +123,7 @@ set +a
 RUN_QWEN_INTEGRATION=1 .venv/bin/pytest -m live_provider -q
 ```
 
-The live canary should remain deliberately narrow: one Text generation API request using a saved profile, one documented model/voice combination, a temporary database/data directory, and a non-empty audio assertion. It normally uses an instruction profile. With `QWEN_LIVE_CLONE_MANIFEST` set to the absolute path of an accepted version-1 workshop manifest containing `readvox-kai-v1`, it instead installs the Kai Narrator catalog voice in temporary storage, creates a personal profile through the API, and reuses that enrollment for the same single paid synthesis request. It never creates an enrollment or modifies production History. Deterministic tests verify that preview sampling does not create a History entry. It is an integration health check, not an exhaustive provider voice test.
+The live canary should remain deliberately narrow: one Text generation API request using a saved profile, one documented model/voice combination, a temporary database/data directory, and a non-empty audio assertion. It normally uses a standard Kai Chinese profile with empty instructions. With `QWEN_LIVE_CLONE_MANIFEST` set to the absolute path of an accepted version-1 workshop manifest containing `readvox-kai-v1`, it instead installs the Kai Narrator catalog voice in temporary storage, creates a personal profile through the API, and reuses that enrollment for the same single paid synthesis request. It never creates an enrollment or modifies production History. Deterministic tests verify that preview sampling does not create a History entry. It is an integration health check, not an exhaustive provider voice test.
 
 Prefer focused tests first:
 

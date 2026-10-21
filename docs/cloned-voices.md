@@ -63,7 +63,7 @@ To generate candidate reference recordings first, provide a UTF-8 text file and 
 .venv/bin/python scripts/voices.py candidates --text reference.txt --voices Kai Vivian Bellona Neil --speeds 1 1.1 1.25 --output data/voice-workshop/candidates --check
 ```
 
-Remove `--check` to synthesize. Candidates default to the instruction model and audiobook instructions; `--model`, `--language` and `--instructions <UTF-8-file>` override these. When enrolling a completed candidate, add `--candidate-manifest <manifest.json> --sample <number>` to retain and verify its source settings. English enrollment requires an English candidate.
+Remove `--check` to synthesize. Candidates default to the standard `qwen3-tts-flash-realtime` model with empty instructions; `--model`, `--language` and `--instructions <UTF-8-file>` override these. When enrolling a completed candidate, add `--candidate-manifest <manifest.json> --sample <number>` to retain and verify its source settings. English enrollment requires an English candidate.
 
 Compare the enrollment on unfamiliar UTF-8 passages, each 1–2000 characters. `--passages` accepts a text file or a directory of ordered `.txt` files. Each passage makes an independent synthesis request:
 

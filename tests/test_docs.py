@@ -183,7 +183,7 @@ def test_systemd_setup_files_match_vps_pattern():
     assert "journalctl -u tts -f" in readme
     assert "TTS_PROVIDER=qwen" in env_example
     assert "DASHSCOPE_API_KEY=" in env_example
-    assert "TTS_MODEL=qwen3-tts-instruct-flash-realtime" in env_example
+    assert "TTS_MODEL=qwen3-tts-flash-realtime" in env_example
     assert "OCR_PROVIDER=qwen" in env_example
     assert "OCR_MODEL=qwen-vl-ocr" in env_example
     assert "TTS_DEFAULT_ENGLISH_VOICE=Kai" in env_example

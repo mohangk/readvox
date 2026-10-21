@@ -61,7 +61,7 @@ cp setup/envrc.local.example .envrc.local
 chmod 0600 .envrc.local
 ```
 
-Edit `.envrc.local` to set `DASHSCOPE_API_KEY`. The example selects `TTS_PROVIDER=qwen`, `OCR_PROVIDER=qwen`, and `TTS_MODEL=qwen3-tts-instruct-flash-realtime`. Set `TTS_DATA_DIR` to your checkout’s data directory if it is not `/home/mohan/tts/data`. Keep the file private.
+Edit `.envrc.local` to set `DASHSCOPE_API_KEY`. The example selects `TTS_PROVIDER=qwen`, `OCR_PROVIDER=qwen`, and `TTS_MODEL=qwen3-tts-flash-realtime`. Set `TTS_DATA_DIR` to your checkout’s data directory if it is not `/home/mohan/tts/data`. Keep the file private.
 
 ```bash
 set -a

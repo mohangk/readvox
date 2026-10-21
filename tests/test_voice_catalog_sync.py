@@ -89,11 +89,11 @@ def test_invalid_sources_and_late_collision_are_atomic(unpopulated_settings):
 
 
 def test_reviewed_source_has_one_binding_and_identity_per_preset():
-    from tts_app.providers.qwen_catalog import qwen_voice_definitions, INSTRUCTION_MODEL, FLASH_MODEL
+    from tts_app.providers.qwen_catalog import qwen_voice_definitions, FLASH_MODEL
     voices = qwen_voice_definitions()
     assert len(voices) == len({value['provider_voice_id'] for value in voices}) == 48
     by_name = {value['name']: value for value in voices}
-    assert by_name['Kai']['model'] == INSTRUCTION_MODEL and by_name['Kai']['supports_instructions']
+    assert by_name['Kai']['model'] == FLASH_MODEL and not by_name['Kai']['supports_instructions']
     assert by_name['Jennifer']['model'] == FLASH_MODEL and not by_name['Jennifer']['supports_instructions']
     assert by_name['Kai']['languages'] == by_name['Jennifer']['languages'] == ['en','zh']
     assert by_name['Jada']['languages'] == ['en']

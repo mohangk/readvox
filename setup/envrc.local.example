@@ -4,7 +4,7 @@
 
 TTS_PROVIDER=qwen
 DASHSCOPE_API_KEY=
-TTS_MODEL=qwen3-tts-instruct-flash-realtime
+TTS_MODEL=qwen3-tts-flash-realtime
 OCR_PROVIDER=qwen
 OCR_MODEL=qwen-vl-ocr
 QWEN_REALTIME_URL=wss://dashscope-intl.aliyuncs.com/api-ws/v1/realtime

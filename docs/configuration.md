@@ -19,7 +19,7 @@ The fake TTS provider writes deterministic audio-like files, not playable speech
 TTS_PROVIDER=qwen
 OCR_PROVIDER=qwen
 DASHSCOPE_API_KEY=...
-TTS_MODEL=qwen3-tts-instruct-flash-realtime
+TTS_MODEL=qwen3-tts-flash-realtime
 OCR_MODEL=qwen-vl-ocr
 QWEN_REALTIME_URL=wss://dashscope-intl.aliyuncs.com/api-ws/v1/realtime
 TTS_DEFAULT_ENGLISH_VOICE=Kai
@@ -51,6 +51,14 @@ Voice samples accept preview text up to 50,000 characters, segmented with `TTS_S
 
 UI generation requests send `profile_id`. The server snapshots the resolved profile name, voice, provider, model and reading settings before generation. Editing or deleting a profile cannot change active jobs or History. Unavailable voices and voices from another provider fail validation without substitution. API clients without a profile can send explicit voice/speed/language with the configured `TTS_MODEL` and empty instructions. Synthesis overrides alongside `profile_id` are rejected.
 
+## Built-in model availability
+
+The reviewed built-in catalog uses `qwen3-tts-flash-realtime`, with speed control and no style instructions. On October 21, 2026, live checks against the configured Singapore endpoint rejected `qwen3-tts-instruct-flash-realtime` with `InvalidParameter: Model not exist.`; the standard model successfully synthesized Kai in Chinese. This establishes endpoint availability, not a confirmed global retirement date. See the [current voice list](https://www.alibabacloud.com/help/en/model-studio/qwen-tts-voice-list).
+
+For an existing installation, back up SQLite, wait for active jobs, update code and explicitly refresh the catalog with `scripts/populate_voice_catalog.py`. This preserves voice IDs, clones, profiles and History. In affected profiles, save with empty instructions; the editor disables instructions when the catalog voice cannot apply them. Update a local `TTS_MODEL` override as well; the running service reads environment changes on restart. Historical generation snapshots retain their original model. Resume retains that model too: regenerate saved text as a new generation when the old model is unavailable.
+
+Qwen can return a top-level `code`/`message` error without an event `type`. Readvox reports its code and request ID immediately; the known model-not-found response becomes a controlled model-unavailable explanation. Other provider messages remain excluded to protect submitted content.
+
 ## Cloned voices
 
 Use [Creating and reusing cloned voices](cloned-voices.md) for enrollment, comparison, installation, recovery and API details. Installation accepts an approved version-1 workshop manifest and adds catalog voices without creating profiles or making provider calls. The four saved narrators support English and `qwen3-tts-vc-realtime-2026-01-15`; instructions are disabled. Choose the clone and use **Save As…** to create a profile. Its catalog model takes precedence over the global `TTS_MODEL` default.
@@ -68,7 +76,7 @@ set +a
 RUN_QWEN_INTEGRATION=1 .venv/bin/pytest -m live_provider -q
 ```
 
-It normally uses an instruction profile. To reuse the saved Kai enrollment instead, set `QWEN_LIVE_CLONE_MANIFEST` to the absolute path of an accepted version-1 manifest containing `readvox-kai-v1`:
+It normally uses a standard Kai Chinese profile with empty instructions. To reuse the saved Kai enrollment instead, set `QWEN_LIVE_CLONE_MANIFEST` to the absolute path of an accepted version-1 manifest containing `readvox-kai-v1`:
 
 ```bash
 QWEN_LIVE_CLONE_MANIFEST=/home/mohan/tts/data/voice-workshop/narrators-v1/manifest.json RUN_QWEN_INTEGRATION=1 .venv/bin/pytest -m live_provider -q

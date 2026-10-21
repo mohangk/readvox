@@ -69,7 +69,7 @@ class QwenTTSProvider:
             return None
 
         async def receive(deadline):
-            nonlocal session_id
+            nonlocal session_id, request_id
             try:
                 async with asyncio.timeout_at(deadline):
                     event = json.loads(await anext(events))
@@ -77,10 +77,17 @@ class QwenTTSProvider:
                 raise _ProtocolError("qwen provider ended before a completed response") from exc
             if event.get("type") == "session.created":
                 session_id = identifier((event.get("session") or {}).get("id"))
-            if event.get("type") == "error":
-                error = event.get("error") or {}
+            if event.get("type") == "error" or ("code" in event and "message" in event):
+                error = event.get("error") if event.get("type") == "error" else event
+                error = error if isinstance(error, dict) else {}
+                request_id = identifier(event.get("request_id")) or request_id
                 code = identifier(error.get("code")) or "PROVIDER_ERROR"
-                raise _ProtocolError(f"{code}: Qwen rejected the synthesis request")
+                # Interpret only known messages; never persist arbitrary upstream text.
+                if code == "InvalidParameter" and error.get("message") == "Model not exist.":
+                    description = "Configured Qwen model is unavailable at this endpoint. Select an available voice/model and create a new generation."
+                else:
+                    description = "Qwen rejected the synthesis request"
+                raise _ProtocolError(f"{code}: {description}")
             return event
 
         async def acknowledgement(expected):

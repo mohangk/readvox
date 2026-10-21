@@ -412,3 +412,33 @@ async def test_qwen_transport_error_does_not_echo_request(caplog):
     assert 'OSError' in str(error.value)
     assert 'private' not in str(error.value) + caplog.text
     assert 'secret-key' not in str(error.value) + caplog.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('wrapped', [False, True])
+async def test_qwen_reports_model_unavailable_before_text_submission(wrapped, caplog):
+    error = {'code': 'InvalidParameter', 'message': 'Model not exist.'}
+    event = {'type': 'error', 'error': error, 'request_id': 'request-model-123'} if wrapped else {**error, 'request_id': 'request-model-123'}
+    ws = FakeWebSocket([{'type': 'session.created'}, event])
+    async def connect(*args, **kwargs):
+        return ws
+    provider = QwenTTSProvider('secret-key', 'removed-model', 'wss://example.test', connect=connect)
+    with pytest.raises(ProviderError, match='model is unavailable') as raised:
+        _ = [c async for c in provider.stream_speech('private article', TTSOptions(voice='Kai'))]
+    assert 'InvalidParameter' in str(raised.value)
+    assert 'request-model-123' in str(raised.value)
+    assert not any(e['type'] == 'input_text_buffer.append' for e in ws.sent_events)
+    assert 'private article' not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_qwen_flat_error_keeps_code_without_echoing_provider_message(caplog):
+    ws = FakeWebSocket([{'code': 'InvalidParameter', 'message': 'private excerpt secret-key', 'request_id': 'request-123'}])
+    async def connect(*args, **kwargs):
+        return ws
+    provider = QwenTTSProvider('secret-key', 'model', 'wss://example.test', connect=connect)
+    with pytest.raises(ProviderError, match='InvalidParameter') as raised:
+        _ = [c async for c in provider.stream_speech('private excerpt and more text', TTSOptions(voice='Kai'))]
+    assert 'request-123' in str(raised.value)
+    assert 'private excerpt' not in str(raised.value) + caplog.text
+    assert 'secret-key' not in str(raised.value) + caplog.text

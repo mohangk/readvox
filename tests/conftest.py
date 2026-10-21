@@ -43,11 +43,17 @@ def test_settings(unpopulated_settings):
     settings = unpopulated_settings
     # Explicit catalog setup; production startup never populates provider voices.
     from tts_app.providers.qwen_catalog import qwen_voice_definitions
+    from tts_app.providers.options import QWEN_INSTRUCTION_VOICES, INSTRUCTION_MODEL
     from tts_app.storage import Storage
     from tts_app.voice_storage import builtin_voice_key
     storage = Storage(settings.db_path)
     storage.init_schema()
+    # Fake capabilities deliberately cover both instruction and standard models;
+    # real Qwen catalog tests use unpopulated_settings and explicit population.
+    instructional = {voice.value for voice in QWEN_INSTRUCTION_VOICES}
     storage.sync_provider_voices('fake', [{**voice, 'provider': 'fake',
+        'model': INSTRUCTION_MODEL if voice['provider_voice_id'] in instructional else voice['model'],
+        'supports_instructions': voice['provider_voice_id'] in instructional,
         'key': builtin_voice_key('fake', voice['provider_voice_id'])} for voice in qwen_voice_definitions()])
     return settings
 

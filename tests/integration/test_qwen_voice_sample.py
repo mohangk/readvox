@@ -35,15 +35,19 @@ def test_saved_profile_integrates_with_qwen_generation(unpopulated_settings):
         from tts_app.voice_catalog_sync import sync_voice_catalog
         sync_voice_catalog(settings)
     client = TestClient(create_app(settings, run_background_inline=True))
-    text = "Readvox checks the live provider with calm, clear narration."
+    text = "你好，这是 Readvox 中文语音测试。"
     if clone_manifest:
+        text = "Readvox checks the live provider with calm, clear narration."
         created=client.post('/api/voice-profiles',json=dict(name='Live Kai check',voice_id=voice['id'],
             language='en',speed=1.0,instructions='',preview_text=text))
         assert created.status_code==201,created.text
         profile=created.json()
     else:
-        profile = client.get("/api/voice-profiles").json()[0]
-        profile["instructions"] = "Read calmly and clearly."
+        profile = next(p for p in client.get("/api/voice-profiles").json() if p['language'] == 'zh')
+        kai = next(v for v in client.get('/api/voices').json() if v['provider_voice_id'] == 'Kai')
+        profile['voice_id'] = kai['id']
+        profile['voice'] = 'Kai'
+        profile["instructions"] = ""
         profile["preview_text"] = text
         saved = client.put(f"/api/voice-profiles/{profile['id']}", json=profile)
         assert saved.status_code == 200

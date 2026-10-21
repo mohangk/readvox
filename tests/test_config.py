@@ -17,7 +17,7 @@ def test_legacy_qwen_model_is_ignored(monkeypatch):
 
     settings = load_settings()
 
-    assert settings.qwen_model == "qwen3-tts-instruct-flash-realtime"
+    assert settings.qwen_model == "qwen3-tts-flash-realtime"
 
 
 def test_ocr_model_env_replaces_legacy_qwen_ocr_model(monkeypatch):

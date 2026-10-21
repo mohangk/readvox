@@ -2,6 +2,7 @@
 from pathlib import Path
 
 from tts_app.profile_defaults import AUDIOBOOK_INSTRUCTIONS
+from tts_app.providers.options import QWEN_INSTRUCTION_SAMPLE_CAPABILITIES
 from tts_app.voice_tools.audio import asset
 from tts_app.voice_tools.common import new_run, read_text, settings, synthesize, text_hash
 from tts_app.voice_tools.manifest import load_manifest, save_manifest
@@ -10,7 +11,9 @@ from tts_app.voice_tools.report import write_report
 
 async def run(args, *, provider):
     text = read_text(args.text)
-    instructions = args.instructions.read_text(encoding='utf-8') if args.instructions else AUDIOBOOK_INSTRUCTIONS
+    capability = next((item for item in QWEN_INSTRUCTION_SAMPLE_CAPABILITIES.models if item.option.value == args.model), None)
+    default_instructions = AUDIOBOOK_INSTRUCTIONS if capability and capability.supports_instructions else ''
+    instructions = args.instructions.read_text(encoding='utf-8') if args.instructions else default_instructions
     matrix = [settings(voice=voice, speed=speed, model=args.model, language=args.language, instructions=instructions)
               for voice in args.voices for speed in args.speeds]
     if len({(s['voice'], s['speed']) for s in matrix}) != len(matrix):
